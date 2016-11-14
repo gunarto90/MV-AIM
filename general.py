@@ -2,6 +2,7 @@ import os
 import math
 from datetime import datetime
 from datetime import date
+from math import radians, cos, sin, asin, sqrt, pow, exp
 import setting as st
 
 IS_DEBUG = True
@@ -75,3 +76,41 @@ def debug(message, callerid=None, clean=False, out_stdio=True, out_file=False):
     if out_file is True:
         write_to_file(debug_filename, text)
     return text
+
+def activity_to_int(act, activities):
+    idx = 0
+    for a in activities:
+        if a == act:
+            return idx
+        idx += 1
+    return -1
+
+def entropy(data):
+    total = 0.0
+    ent = 0
+    for item in data:
+        total += item
+    # if total == 0:
+    #     return 0.0  # No entropy
+    for item in data:
+        pi = float(item)/total
+        if pi == 0:
+            continue
+        ent -= pi * math.log(pi)
+    return ent
+
+def haversine(lat1, lon1, lat2, lon2):
+    """
+    Calculate the great circle distance between two points 
+    on the earth (specified in decimal degrees)
+    """
+    # convert decimal degrees to radians 
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+    # haversine formula 
+    dlon = lon2 - lon1 
+    dlat = lat2 - lat1 
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a)) 
+    km = 6367 * c
+    distance = km * 1000
+    return distance # in meter

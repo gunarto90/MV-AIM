@@ -1,4 +1,15 @@
 {
     "dataset_folder":"dataset/",
-    "working_folder":"working/"
+    "working_folder":"working/",
+    "users":[
+        355027051966921
+    ],
+    "activities":[
+        "Working",
+        "Transportation",
+        "Dining",
+        "Entertainment",
+        "Shopping",
+        "Sporting"
+    ]
 }

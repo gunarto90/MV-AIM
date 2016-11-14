@@ -6,3 +6,9 @@ def get_working_folder():
 
 def get_log_folder():
     return 'log/'
+
+def get_uids():
+    return 'users'
+
+def get_activities():
+    return 'activities'
