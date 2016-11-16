@@ -90,8 +90,8 @@ def entropy(data):
     ent = 0
     for item in data:
         total += item
-    # if total == 0:
-    #     return 0.0  # No entropy
+    if total == 0:
+        return -1  # No entropy
     for item in data:
         pi = float(item)/total
         if pi == 0:
