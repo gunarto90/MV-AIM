@@ -1,11 +1,30 @@
 import os
 import math
+import json
 from datetime import datetime
 from datetime import date
 from math import radians, cos, sin, asin, sqrt, pow, exp
 import setting as st
 
 IS_DEBUG = True
+
+def init(file='setting.json'):
+    dataset_folder = None
+    working_folder = None
+    user_ids = None
+    activities = None
+    try:
+        with open(file) as data_file:
+            data = json.load(data_file)
+            debug(data)
+            ### Extracting variables
+            dataset_folder = data[st.get_dataset_folder()]
+            working_folder = data[st.get_working_folder()]
+            user_ids = data[st.get_uids()]
+            activities = data[st.get_activities()]
+    except Exception as ex:
+        debug(ex, callerid='init - json')
+    return dataset_folder, working_folder, user_ids, activities
 
 def make_sure_path_exists(path):
     try:
@@ -85,7 +104,7 @@ def activity_to_int(act, activities):
         idx += 1
     return -1
 
-def entropy(data):
+def entropy(data, basis=2):
     total = 0.0
     ent = 0
     for item in data:
@@ -96,7 +115,7 @@ def entropy(data):
         pi = float(item)/total
         if pi == 0:
             continue
-        ent -= pi * math.log(pi)
+        ent -= pi * math.log(pi, basis)
     return ent
 
 def haversine(lat1, lon1, lat2, lon2):
