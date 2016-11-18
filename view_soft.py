@@ -21,7 +21,12 @@ if __name__ == '__main__':
     # if len(opts) > 0:
     #     pass
     ### Initialize variables from json file
-    dataset_folder, working_folder, user_ids, activities = init()
+    data = init()
+    dataset_folder = data[st.get_dataset_folder()]
+    working_folder = data[st.get_working_folder()]
+    user_ids = data[st.get_uids()]
+    activities = data[st.get_activities()]
+    stop_app_filename = data[st.get_app_stop()]
     debug(dataset_folder)
     debug(user_ids)
     apps_agg = []
@@ -49,7 +54,9 @@ if __name__ == '__main__':
                 app_split = app.translate(remove_digits).replace(':','.').split('.')
                 for app_id in app_split:
                     apps_agg.append(app_id)
-                    found = apps_single.get(app_id)
+                    get = apps_single.get
+                    # apps_single[app_id] = get(app_id, []).append(act_int)
+                    found = get(app_id)
                     if found is None:
                         found = []
                     found.append(act_int)
@@ -70,7 +77,11 @@ if __name__ == '__main__':
     acts = []
     acts_app = []
     app_stats = {}
-    stop_words = ['com', 'google', 'example', 'android', 'htc', 'samsung', 'sony', 'unstable', 'process', 'systemui', 'system', 'nctuhtclogger']
+    # stop_words = ['com', 'google', 'example', 'android', 'htc', 'samsung', 'sony', 'unstable', 'process', 'systemui', 'system', 'nctuhtclogger']
+    stop_words = []
+    with open(stop_app_filename, 'r') as fr:
+        for line in fr:
+            stop_words.append(line.strip())
     for i in range(len(activities)):
         acts.append(0)
         acts_app.append({})
@@ -90,39 +101,49 @@ if __name__ == '__main__':
             acts_map[app_id] = found
         # debug(len(acts))
         # debug(entropy(acts))
-        text = '{},{},{},{}'.format(app_id, len(uacts), entropy(acts, len(activities)), acts)
+        acts_str = ''.join(','+str(x) for x in acts)
+        text = '{},{},{}{}'.format(app_id, len(uacts), entropy(acts, len(activities)), acts_str)
         app_stats[app_id] = (len(uacts), entropy(acts, len(activities)))
         # debug(text, clean=True)
         ### Clean array in every loop
         del acts[:]
         for i in range(len(activities)):
             acts.append(0)
+    total = []
+    for i in range(len(activities)):
+        total.append(0)
+    for i in range(len(activities)):
+        acts_map = acts_app[i]
+        total[i] = (sum(acts_map[x]['f'] for x in acts_map))
+        # total = sum(acts_map[x]['f'] for x in acts_map)
     for app_id, (f, e) in app_stats.items():
         for i in range(len(activities)):
             acts_map = acts_app[i]
             found = acts_map.get(app_id)
+            if found is None and e <= 0.0:
+                continue
             if found is None:
                 found = {'f':0, 'e':0.0}
-            total = sum(acts_map[x]['f'] for x in acts_map)
-            if total > 0:
-                found['f'] = float(found['f'])/total
+            if total[i] > 0:
+                found['f'] = float(found['f'])/total[i]
             else:
                 found['f'] = 0.0
             found['e'] = e
             if found['f'] > 0 and found['e'] > 0:
                 acts_map[app_id] = found
     for i in range(len(activities)):
-        topk = 3
+        topk = 5
         k = 0
         debug(activities[i])
-        debug(acts_app[i])
-        # ### Sorting by 1-entropy * frequency (descending)
-        # for app_id, value in sorted(acts_app[i].items(), key=lambda value: (1-value[1]['e'])*value[1]['f'], reverse=True):
-        #     if k >= topk:
-        #         break
-        #     debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
-        #     k += 1
-        # debug('---')
+        # debug(acts_app[i])
+        # debug(sorted(acts_app[i].items(), key=lambda value: value[1]['f'], reverse=True))
+        ## Sorting by 1-entropy * frequency (descending)
+        for app_id, value in sorted(acts_app[i].items(), key=lambda value: (1-value[1]['e'])*value[1]['f'], reverse=True):
+            if k >= topk:
+                break
+            debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
+            k += 1
+        debug('---')
         # ### Sorting by frequency (descending)
         # for app_id, value in sorted(acts_app[i].items(), key=lambda value: value[1]['f'], reverse=True):
         #     if k >= topk:
