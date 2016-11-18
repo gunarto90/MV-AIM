@@ -16,15 +16,16 @@ def init(file='setting.json'):
     try:
         with open(file) as data_file:
             data = json.load(data_file)
-            debug(data)
+            # debug(data)
             ### Extracting variables
-            dataset_folder = data[st.get_dataset_folder()]
-            working_folder = data[st.get_working_folder()]
-            user_ids = data[st.get_uids()]
-            activities = data[st.get_activities()]
+            # dataset_folder = data[st.get_dataset_folder()]
+            # working_folder = data[st.get_working_folder()]
+            # user_ids = data[st.get_uids()]
+            # activities = data[st.get_activities()]
+            # stop_app_filename = data[st.get_app_stop()]
     except Exception as ex:
         debug(ex, callerid='init - json')
-    return dataset_folder, working_folder, user_ids, activities
+    return data
 
 def make_sure_path_exists(path):
     try:
