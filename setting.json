@@ -1,8 +1,9 @@
 {
     "dataset_folder":"dataset/",
     "working_folder":"working/",
+    "stop_app_filename":"stop_app.txt",
     "users":[
-        355027051966921
+        863360029004219
     ],
     "activities":[
         "Working",

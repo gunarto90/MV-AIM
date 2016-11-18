@@ -12,3 +12,6 @@ def get_uids():
 
 def get_activities():
     return 'activities'
+
+def get_app_stop():
+    return 'stop_app_filename'
