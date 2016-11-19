@@ -137,19 +137,12 @@ if __name__ == '__main__':
         debug(activities[i])
         # debug(acts_app[i])
         # debug(sorted(acts_app[i].items(), key=lambda value: value[1]['f'], reverse=True))
+        sorting = lambda value: (1-value[1]['e'])*value[1]['f']
+        # sorting = lambda value: value[1]['f']
         ## Sorting by 1-entropy * frequency (descending)
-        for app_id, value in sorted(acts_app[i].items(), key=lambda value: (1-value[1]['e'])*value[1]['f'], reverse=True):
+        for app_id, value in sorted(acts_app[i].items(), key=sorting, reverse=True):
             if k >= topk:
                 break
             debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
             k += 1
         debug('---')
-        # ### Sorting by frequency (descending)
-        # for app_id, value in sorted(acts_app[i].items(), key=lambda value: value[1]['f'], reverse=True):
-        #     if k >= topk:
-        #         break
-        #     # debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
-        #     debug(app_id)
-        #     debug(value)
-        #     k += 1
-        # debug('---')
