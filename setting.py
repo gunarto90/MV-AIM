@@ -1,3 +1,9 @@
+"""
+Code by Gunarto Sindoro Njoo
+Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
+Version 1.0
+2016/11/20 03:57PM
+"""
 def get_dataset_folder():
     return 'dataset_folder'
 

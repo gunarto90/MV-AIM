@@ -1,3 +1,9 @@
+"""
+Code by Gunarto Sindoro Njoo
+Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
+Version 1.0
+2016/11/20 03:57PM
+"""
 import getopt
 import sys
 import re
@@ -9,39 +15,19 @@ from datetime import datetime
 from string import digits
 from general import *
 
-# Main function
-if __name__ == '__main__':
-    ### Load options (if any)
-    # try:
-    #     opts, args = getopt.getopt(sys.argv[1:],"p:k:s:f:m:",["project=","topk=","start=","finish=","mode="])
-    # except getopt.GetoptError:
-    #     err_msg = 'pgt.py -m MODE -p <0 gowalla / 1 brightkite> -k <top k users> -s <start position>'
-    #     debug(err_msg, 'opt error')
-    #     sys.exit(2)
-    # if len(opts) > 0:
-    #     pass
-    ### Initialize variables from json file
-    data = init()
-    dataset_folder = data[st.get_dataset_folder()]
-    working_folder = data[st.get_working_folder()]
-    user_ids = data[st.get_uids()]
-    activities = data[st.get_activities()]
-    stop_app_filename = data[st.get_app_stop()]
-    debug(dataset_folder)
-    debug(user_ids)
+SOFT_FORMAT = '{}/{}_soft.csv'
+TOP_K = 5
+SORTING = 'ef'  ### ef: entropy frequency, f: frequency, e: entropy
+
+def read_soft_file_agg(dataset_folder, user_ids):
     apps_agg = []
     apps_single = {}
     remove_digits = str.maketrans('', '', digits)
-    activity_hour = []
-    for i in range(len(activities)):
-        a = []
-        for i in range(24):
-            a.append(0)
-        activity_hour.append(a)
+    
     for uid in user_ids:
-        filename = dataset_folder + str(uid) + '_soft.csv'
+        filename = SOFT_FORMAT.format(dataset_folder, uid)
         with open(filename) as fr:
-            debug(filename, callerid='soft files')
+            # debug(filename, callerid=get_function_name())
             for line in fr:
                 split = line.strip().split(',')
                 uid = int(split[0])
@@ -50,7 +36,6 @@ if __name__ == '__main__':
                 time = int(split[3])    # in ms
                 act_int = activity_to_int(act, activities)
                 date = datetime.fromtimestamp(time / 1e3)
-                activity_hour[act_int][date.hour] += 1
                 app_split = app.translate(remove_digits).replace(':','.').split('.')
                 for app_id in app_split:
                     apps_agg.append(app_id)
@@ -61,27 +46,44 @@ if __name__ == '__main__':
                         found = []
                     found.append(act_int)
                     apps_single[app_id] = found
-    ### Time
-    # aa = np.array(activity_hour)
-    # debug(aa.shape)
-    # debug(aa.T.shape)
-    # for i in range(len(aa.T)):
-    #     ent = entropy(aa.T[i])
-    #     debug('{},{}'.format(i, ent), clean=True)
-    # for i in range(len(activities)):
-    #     debug(activity_hour[i], clean=True)
-    ### Apps
-    debug(len(apps_agg))
-    debug(len(apps_single))
-    debug(activities)
+    return apps_agg, apps_single
+
+"""
+Normalizing frequency and adding entropy information
+"""
+def normalize_app_statistics(app_stats, acts_app, activities):
+    total = []
+    for i in range(len(activities)):
+        total.append(0)
+    for i in range(len(activities)):
+        acts_map = acts_app[i]
+        total[i] = (sum(acts_map[x]['f'] for x in acts_map))
+        # total = sum(acts_map[x]['f'] for x in acts_map)
+    for app_id, (f, e) in app_stats.items():
+        for i in range(len(activities)):
+            acts_map = acts_app[i]
+            found = acts_map.get(app_id)
+            if found is None and e <= 0.0:
+                continue
+            if found is None:
+                found = {'f':0, 'e':0.0}
+            if total[i] > 0:
+                found['f'] = float(found['f'])/total[i]
+            else:
+                found['f'] = 0.0
+            found['e'] = e
+            if found['f'] > 0 and found['e'] > 0:
+                acts_map[app_id] = found
+
+"""
+Extracting the statistics of each app in each activity
+"""
+def app_statistics():
+    ### app_stats : entropy and frequency of each app
+    ### acts_app  : frequency of app in specific activity
+    app_stats = {}
     acts = []
     acts_app = []
-    app_stats = {}
-    # stop_words = ['com', 'google', 'example', 'android', 'htc', 'samsung', 'sony', 'unstable', 'process', 'systemui', 'system', 'nctuhtclogger']
-    stop_words = []
-    with open(stop_app_filename, 'r') as fr:
-        for line in fr:
-            stop_words.append(line.strip())
     for i in range(len(activities)):
         acts.append(0)
         acts_app.append({})
@@ -109,40 +111,66 @@ if __name__ == '__main__':
         del acts[:]
         for i in range(len(activities)):
             acts.append(0)
-    total = []
+    normalize_app_statistics(app_stats, acts_app, activities)
+    return app_stats, acts_app
+
+def select_top_k_apps(top_k, activities, acts_app):
+    top_k_apps = {}        
     for i in range(len(activities)):
-        total.append(0)
-    for i in range(len(activities)):
-        acts_map = acts_app[i]
-        total[i] = (sum(acts_map[x]['f'] for x in acts_map))
-        # total = sum(acts_map[x]['f'] for x in acts_map)
-    for app_id, (f, e) in app_stats.items():
-        for i in range(len(activities)):
-            acts_map = acts_app[i]
-            found = acts_map.get(app_id)
-            if found is None and e <= 0.0:
-                continue
-            if found is None:
-                found = {'f':0, 'e':0.0}
-            if total[i] > 0:
-                found['f'] = float(found['f'])/total[i]
-            else:
-                found['f'] = 0.0
-            found['e'] = e
-            if found['f'] > 0 and found['e'] > 0:
-                acts_map[app_id] = found
-    for i in range(len(activities)):
-        topk = 5
         k = 0
-        debug(activities[i])
         # debug(acts_app[i])
         # debug(sorted(acts_app[i].items(), key=lambda value: value[1]['f'], reverse=True))
-        sorting = lambda value: (1-value[1]['e'])*value[1]['f']
-        # sorting = lambda value: value[1]['f']
-        ## Sorting by 1-entropy * frequency (descending)
-        for app_id, value in sorted(acts_app[i].items(), key=sorting, reverse=True):
-            if k >= topk:
+        (sort, desc) = sorting[SORTING]
+        ### Sorting based on sorting schemes
+        top = []
+        for app_id, value in sorted(acts_app[i].items(), key=sort, reverse=desc):
+            if k >= TOP_K:
                 break
-            debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
+            top.append((app_id, value))
             k += 1
-        debug('---')
+        top_k_apps[i] = top
+    return top_k_apps
+
+def init_stop_words(stop_app_filename):
+    stop_words = []
+    with open(stop_app_filename, 'r') as fr:
+        for line in fr:
+            stop_words.append(line.strip())
+    return stop_words
+
+def init_sorting_schemes():
+    sorting = {}
+    ### Sorting mechanism, reverse (descending order) status [True/False]
+    sorting['ef']   = (lambda value: (1-value[1]['e'])*value[1]['f'], True)
+    sorting['f']    = (lambda value: value[1]['f'], True)
+    sorting['e']    = (lambda value: value[1]['e'], False)
+    return sorting
+
+# Main function
+if __name__ == '__main__':
+    ### Initialize variables from json file
+    data = init()
+    dataset_folder  = data[st.get_dataset_folder()]
+    working_folder  = data[st.get_working_folder()]
+    user_ids        = data[st.get_uids()]
+    activities      = data[st.get_activities()]
+    ### Stop words for specific app names
+    stop_app_filename = data[st.get_app_stop()]
+    stop_words = init_stop_words(stop_app_filename)
+    ### Init sorting mechanism
+    sorting = init_sorting_schemes()
+    ### Read software files
+    for uid in user_ids:
+        apps_agg, apps_single = read_soft_file_agg(dataset_folder, user_ids)
+        debug('len(apps_agg): {}'.format(len(apps_agg)))
+        debug('len(apps_single): {}'.format(len(apps_single)))
+        debug('Activities: {}'.format(activities))
+
+        app_stats, acts_app = app_statistics()
+        top_k_apps = select_top_k_apps(TOP_K, activities, acts_app)
+        for i in range(len(activities)):
+            debug(activities[i], clean=True)
+            top = top_k_apps[i]
+            for app_id, value in top:
+                debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
+            print()
