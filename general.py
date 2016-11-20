@@ -1,6 +1,13 @@
+"""
+Code by Gunarto Sindoro Njoo
+Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
+Version 1.0
+2016/11/20 03:57PM
+"""
 import os
 import math
 import json
+import inspect
 from datetime import datetime
 from datetime import date
 from math import radians, cos, sin, asin, sqrt, pow, exp
@@ -26,6 +33,12 @@ def init(file='setting.json'):
     except Exception as ex:
         debug(ex, callerid='init - json')
     return data
+
+def get_function_name():
+    return inspect.stack()[1][3]
+
+def get_parent_name():
+    return inspect.stack()[2][3]
 
 def make_sure_path_exists(path):
     try:
