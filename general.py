@@ -2,7 +2,7 @@
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
 Version 1.0
-2016/11/20 03:57PM
+2016/11/24 05:03PM
 """
 import os
 import math
@@ -22,7 +22,7 @@ def init(file='setting.json', users='users.json'):
             data = json.load(data_file)
         with open(users) as data_file:
             load = json.load(data_file)
-            user_ids = data[st.get_uids()]
+            user_ids = load[st.get_uids()]
     except Exception as ex:
         debug(ex, callerid='init - json')
     return data, user_ids
