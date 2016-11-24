@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.2
-2016/11/24 04:45PM
+Version 1.0.3
+2016/11/24 05:39PM
 """
 import getopt
 import sys
@@ -11,7 +11,7 @@ import os
 import json
 import numpy as np
 import setting as st
-from datetime import datetime
+from datetime import datetime, date
 from string import digits
 from general import *
 from evaluation import *
@@ -209,24 +209,27 @@ def get_all_apps(dataset_folder, user_ids):
     return app_names
 
 ### label is put in the first column
-def testing(dataset):
+def testing(dataset, uid):
     dataset = np.array(dataset)
     clfs = classifier_list()
     # print(dataset.shape)
     ncol = dataset.shape[1]
     X = dataset[:,1:ncol] # Remove index 0 
     y = dataset[:,0]
+    texts = []
     for name, clf in clfs.items():
-        debug(name)
+        # debug(name)
         output = evaluation(X, y, clf)
-        for name, result in output.items():
-            # if name != 'y1':
-            if name == 'acc':
-                debug('{}\t [{}]'.format(result, name))
+        acc = output['acc']
+        time = output['time']
+        text = '{},{},{},{}'.format(uid, name, acc, time)
+        texts.append(text)
+    return texts
 
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
+    debug('--- Program Started ---')
     data, user_ids  = init()
     dataset_folder  = data[st.get_dataset_folder()]
     working_folder  = data[st.get_working_folder()]
@@ -240,13 +243,20 @@ if __name__ == '__main__':
     lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=False)
     # print(len(lines))
     ### Test
+    output = []
     for uid, data in users_data.items():
         debug('User: {}'.format(uid))
         debug('#Rows: {}'.format(len(data)))
-        testing(data)
+        result = testing(data, uid)
+        output.extend(result)
     debug('All data')
     debug('#Rows: {}'.format(len(all_data)))
-    testing(all_data)
+    result = testing(all_data, 'ALL')
+    output.extend(result)
+    filename = '{}soft_report_{}.csv'.format(working_folder, date.today())
+    remove_file_if_exists(filename)
+    write_to_file_buffered(filename, output)
+    # print(output)
 
     ### Init sorting mechanism
     # sorting = init_sorting_schemes()
@@ -266,3 +276,4 @@ if __name__ == '__main__':
     #     print()
     ### Create a tuple for software view model by transforming raw data
     ### {frequency, entropy, entropy_frequency}
+    debug('--- Program Finished ---')
