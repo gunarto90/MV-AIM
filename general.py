@@ -15,24 +15,17 @@ import setting as st
 
 IS_DEBUG = True
 
-def init(file='setting.json'):
-    dataset_folder = None
-    working_folder = None
+def init(file='setting.json', users='users.json'):
     user_ids = None
-    activities = None
     try:
         with open(file) as data_file:
             data = json.load(data_file)
-            # debug(data)
-            ### Extracting variables
-            # dataset_folder = data[st.get_dataset_folder()]
-            # working_folder = data[st.get_working_folder()]
-            # user_ids = data[st.get_uids()]
-            # activities = data[st.get_activities()]
-            # stop_app_filename = data[st.get_app_stop()]
+        with open(users) as data_file:
+            load = json.load(data_file)
+            user_ids = data[st.get_uids()]
     except Exception as ex:
         debug(ex, callerid='init - json')
-    return data
+    return data, user_ids
 
 def get_function_name():
     return inspect.stack()[1][3]

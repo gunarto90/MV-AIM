@@ -227,10 +227,9 @@ def testing(dataset):
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
-    data = init()
+    data, user_ids  = init()
     dataset_folder  = data[st.get_dataset_folder()]
     working_folder  = data[st.get_working_folder()]
-    user_ids        = data[st.get_uids()]
     activities      = data[st.get_activities()]
     ### Stop words for specific app names
     stop_app_filename = data[st.get_app_stop()]
@@ -240,12 +239,13 @@ if __name__ == '__main__':
     # print(len(app_names))
     lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=False)
     # print(len(lines))
-    debug(len(all_data))
     ### Test
     for uid, data in users_data.items():
         debug('User: {}'.format(uid))
+        debug('#Rows: {}'.format(len(data)))
         testing(data)
     debug('All data')
+    debug('#Rows: {}'.format(len(all_data)))
     testing(all_data)
 
     ### Init sorting mechanism
