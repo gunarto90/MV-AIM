@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0
-2016/11/20 04.38PM
+Version 1.0.2
+2016/11/24 04:45PM
 """
 import getopt
 import sys
@@ -14,6 +14,7 @@ import setting as st
 from datetime import datetime
 from string import digits
 from general import *
+from evaluation import *
 
 SOFT_FORMAT = '{}/{}_soft.csv'
 TOP_K = 5
@@ -146,11 +147,15 @@ def init_sorting_schemes():
     sorting['e']    = (lambda value: value[1]['e'], False)
     return sorting
 
-def transform_dataset(dataset_folder, working_folder, user_ids, app_names):
+def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=False):
     remove_digits = str.maketrans('', '', digits)
     all_lines = []
+    all_data  = []
+    users_data = {}
     for uid in user_ids:
         lines = []
+        user_data = []
+        users_data[uid] = user_data
         filename = SOFT_FORMAT.format(dataset_folder, uid)
         with open(filename) as fr:
             # debug(filename, callerid=get_function_name())
@@ -174,11 +179,18 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names):
                 soft = (','.join(str(x) for x in app_dist))
                 text = soft + ',' + str(act_int)
                 lines.append(text)
-        filename = SOFT_FORMAT.format(working_folder, uid)
-        remove_file_if_exists(filename)
-        write_to_file_buffered(filename, lines)
+                ### label is put in the first column
+                data = []
+                data.append(act_int)
+                data.extend(app_dist)
+                all_data.append(data)
+                user_data.append(data)
+        if write is True:
+            filename = SOFT_FORMAT.format(working_folder, uid)
+            remove_file_if_exists(filename)
+            write_to_file_buffered(filename, lines)
         all_lines.extend(lines)
-    return all_lines
+    return all_lines, all_data, users_data
 
 def get_all_apps(dataset_folder, user_ids):
     remove_digits = str.maketrans('', '', digits)
@@ -196,6 +208,22 @@ def get_all_apps(dataset_folder, user_ids):
                         app_names.append(app_id)
     return app_names
 
+### label is put in the first column
+def testing(dataset):
+    dataset = np.array(dataset)
+    clfs = classifier_list()
+    # print(dataset.shape)
+    ncol = dataset.shape[1]
+    X = dataset[:,1:ncol] # Remove index 0 
+    y = dataset[:,0]
+    for name, clf in clfs.items():
+        debug(name)
+        output = evaluation(X, y, clf)
+        for name, result in output.items():
+            # if name != 'y1':
+            if name == 'acc':
+                debug('{}\t [{}]'.format(result, name))
+
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
@@ -210,10 +238,18 @@ if __name__ == '__main__':
     ### Transform original input into training and testing dataset
     app_names = get_all_apps(dataset_folder, user_ids)
     # print(len(app_names))
-    lines = transform_dataset(dataset_folder, working_folder, user_ids, app_names)
+    lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=False)
     # print(len(lines))
+    debug(len(all_data))
+    ### Test
+    for uid, data in users_data.items():
+        debug('User: {}'.format(uid))
+        testing(data)
+    debug('All data')
+    testing(all_data)
+
     ### Init sorting mechanism
-    sorting = init_sorting_schemes()
+    # sorting = init_sorting_schemes()
     ### Read software files
     # apps_agg, apps_single = read_soft_file_agg(dataset_folder, user_ids)
     # debug('len(apps_agg): {}'.format(len(apps_agg)))
@@ -228,3 +264,5 @@ if __name__ == '__main__':
     #     for app_id, value in top:
     #         debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
     #     print()
+    ### Create a tuple for software view model by transforming raw data
+    ### {frequency, entropy, entropy_frequency}
