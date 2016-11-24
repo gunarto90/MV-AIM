@@ -2,7 +2,7 @@
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
 Version 1.0
-2016/11/20 03:57PM
+2016/11/20 04.38PM
 """
 import getopt
 import sys
@@ -78,7 +78,7 @@ def normalize_app_statistics(app_stats, acts_app, activities):
 """
 Extracting the statistics of each app in each activity
 """
-def app_statistics():
+def app_statistics(stop_words, activities, apps_single):
     ### app_stats : entropy and frequency of each app
     ### acts_app  : frequency of app in specific activity
     app_stats = {}
@@ -146,6 +146,56 @@ def init_sorting_schemes():
     sorting['e']    = (lambda value: value[1]['e'], False)
     return sorting
 
+def transform_dataset(dataset_folder, working_folder, user_ids, app_names):
+    remove_digits = str.maketrans('', '', digits)
+    all_lines = []
+    for uid in user_ids:
+        lines = []
+        filename = SOFT_FORMAT.format(dataset_folder, uid)
+        with open(filename) as fr:
+            # debug(filename, callerid=get_function_name())
+            for line in fr:
+                split = line.strip().split(',')
+                uid = int(split[0])
+                act = split[1]
+                app = split[2]
+                time = int(split[3])    # in ms
+                act_int = activity_to_int(act, activities)
+                # print(act_int)
+                date = datetime.fromtimestamp(time / 1e3)
+                app_split = app.translate(remove_digits).replace(':','.').split('.')
+                app_dist = []
+                for i in range(len(app_names)):
+                    app_dist.append(0)
+                for app_id in app_split:
+                    idx = app_names.index(app_id)
+                    if idx != -1:
+                        app_dist[idx] = 1
+                soft = (','.join(str(x) for x in app_dist))
+                text = soft + ',' + str(act_int)
+                lines.append(text)
+        filename = SOFT_FORMAT.format(working_folder, uid)
+        remove_file_if_exists(filename)
+        write_to_file_buffered(filename, lines)
+        all_lines.extend(lines)
+    return all_lines
+
+def get_all_apps(dataset_folder, user_ids):
+    remove_digits = str.maketrans('', '', digits)
+    app_names = []
+    for uid in user_ids:
+        filename = SOFT_FORMAT.format(dataset_folder, uid)
+        with open(filename) as fr:
+            # debug(filename, callerid=get_function_name())
+            for line in fr:
+                split = line.strip().split(',')
+                app = split[2]
+                app_split = app.translate(remove_digits).replace(':','.').split('.')
+                for app_id in app_split:
+                    if app_id not in app_names:
+                        app_names.append(app_id)
+    return app_names
+
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
@@ -157,20 +207,24 @@ if __name__ == '__main__':
     ### Stop words for specific app names
     stop_app_filename = data[st.get_app_stop()]
     stop_words = init_stop_words(stop_app_filename)
+    ### Transform original input into training and testing dataset
+    app_names = get_all_apps(dataset_folder, user_ids)
+    # print(len(app_names))
+    lines = transform_dataset(dataset_folder, working_folder, user_ids, app_names)
+    # print(len(lines))
     ### Init sorting mechanism
     sorting = init_sorting_schemes()
     ### Read software files
-    for uid in user_ids:
-        apps_agg, apps_single = read_soft_file_agg(dataset_folder, user_ids)
-        debug('len(apps_agg): {}'.format(len(apps_agg)))
-        debug('len(apps_single): {}'.format(len(apps_single)))
-        debug('Activities: {}'.format(activities))
+    # apps_agg, apps_single = read_soft_file_agg(dataset_folder, user_ids)
+    # debug('len(apps_agg): {}'.format(len(apps_agg)))
+    # debug('len(apps_single): {}'.format(len(apps_single)))
+    # debug('Activities: {}'.format(activities))
 
-        app_stats, acts_app = app_statistics()
-        top_k_apps = select_top_k_apps(TOP_K, activities, acts_app)
-        for i in range(len(activities)):
-            debug(activities[i], clean=True)
-            top = top_k_apps[i]
-            for app_id, value in top:
-                debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
-            print()
+    # app_stats, acts_app = app_statistics(stop_words, activities, apps_single)
+    # top_k_apps = select_top_k_apps(TOP_K, activities, acts_app)
+    # for i in range(len(activities)):
+    #     debug(activities[i], clean=True)
+    #     top = top_k_apps[i]
+    #     for app_id, value in top:
+    #         debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
+    #     print()
