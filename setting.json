@@ -2,9 +2,6 @@
     "dataset_folder":"dataset/",
     "working_folder":"working/",
     "stop_app_filename":"stop_app.txt",
-    "users":[
-        353567051351956
-    ],
     "activities":[
         "Working",
         "Transportation",
