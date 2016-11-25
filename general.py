@@ -64,9 +64,8 @@ def write_to_file(filename, text, append=True, add_linefeed=True):
     with open(filename, mode) as fw:
         fw.write(str(text) + linefeed)
 
-def write_to_file_buffered(filename, text_list, append=True):
+def write_to_file_buffered(filename, text_list, append=True, buffer_size=10000):
     debug('Writing file: {}'.format(filename))
-    buffer_size = 10000
     counter = 0
     temp_str = ""
     for text in text_list:
