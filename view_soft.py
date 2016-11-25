@@ -17,11 +17,13 @@ from collections import defaultdict
 from general import *
 from evaluation import *
 
-SOFT_FORMAT = '{}/{}_soft.csv'
-APP_NAMES   = 'app_names.csv'
+SOFT_FORMAT     = '{}/{}_soft.csv'
+APP_NAMES       = 'app_names.csv'
+ALL_APP_NAME    = 'all_app.bin'
+USERS_DATA_NAME = 'users_data.bin'
 APP_F_THRESHOLD = 1000
-TOP_K = 5
-SORTING = 'ef'  ### ef: entropy frequency, f: frequency, e: entropy
+TOP_K           = 5
+SORTING         = 'ef'  ### ef: entropy frequency, f: frequency, e: entropy
 
 def read_soft_file_agg(dataset_folder, user_ids):
     apps_agg = []
@@ -157,14 +159,13 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
     users_data = {}
     for uid in user_ids:
         lines = []
-        if write is False:
-            user_data = []
-            users_data[uid] = user_data
+        user_data = []
+        users_data[uid] = user_data
         filename = SOFT_FORMAT.format(dataset_folder, uid)
-        debug('Transforming : {}'.format(filename))
         ctr = 0
         with open(filename) as fr:
-            # debug(filename, callerid=get_function_name())
+            debug('Transforming : {}'.format(filename), callerid=get_function_name(), out_file=True)
+            previous_time = 0
             for line in fr:
                 split = line.strip().split(',')
                 uid = int(split[0])
@@ -175,48 +176,52 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
                 # print(act_int)
                 date = datetime.fromtimestamp(time / 1e3)
                 app_split = app.translate(remove_digits).replace(':','.').split('.')
-                app_dist = []
+                if time != previous_time:
+                    app_dist = []
                 for i in range(len(app_names)):
                     app_dist.append(0)
                 for app_id in app_split:
-                    idx = app_names.index(app_id)
-                    if idx != -1:
-                        app_dist[idx] = 1
-                soft = (','.join(str(x) for x in app_dist))
-                text = soft + ',' + str(act_int)
-                lines.append(text)
-                ### label is put in the first column
-                if write is False:
+                    try:
+                        idx = app_names.index(app_id)
+                        if idx != -1:
+                            app_dist[idx] = 1
+                    except:
+                        ### Because some app names are deleted to save resources
+                        pass
+                if time != previous_time:
+                    soft = (','.join(str(x) for x in app_dist))
+                    text = soft + ',' + str(act_int)
+                    lines.append(text)
+                    ### label is put in the first column
                     data = []
                     data.append(act_int)
                     data.extend(app_dist)
                     all_data.append(data)
                     user_data.append(data)
+                    ### Finally update the previous time to match current time
+                    previous_time = time
                 ctr += 1
                 if ctr % 100000 == 0:
-                    debug('Processing {} lines'.format(ctr))
-            debug(len(lines))
+                    debug('Processing {} lines'.format(ctr), out_file=True)
+            debug('len(texts): {}'.format(len(lines)))
+            debug('len(file) : {}'.format(ctr))
             if write is True:
                 filename = SOFT_FORMAT.format(working_folder, uid)
                 remove_file_if_exists(filename)
                 write_to_file_buffered(filename, lines, buffer_size=1000)
                 del lines[:]
-        if write is False:
-            all_lines.extend(lines)
+        all_lines.extend(lines)
+    debug('Started writing all app and users data into binary files', out_file=True)
+    if write is True:
+        with open(ALL_APP_NAME, 'wb') as f:
+            pickle.dump(all_data, f)
+        with open(USERS_DATA_NAME, 'wb') as f:
+            pickle.dump(users_data, f)
+    debug('Finished writing all app and users data into binary files', out_file=True)
     return all_lines, all_data, users_data
 
 def read_dataset_from_file(working_folder, user_ids):
-    all_data  = []
-    users_data = {}
-    for uid in user_ids:
-        filename = SOFT_FORMAT.format(dataset_folder, uid)
-        debug('Transforming : {}'.format(filename))
-        ctr = 0
-        with open(filename) as fr:
-            for line in fr:
-                split = line.strip().split(',')
-                act_int = int(split[len(split-1)])
-                app_dist = int(split[0:len(split-2)])
+    pass
 
 def get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=False):
     remove_digits = str.maketrans('', '', digits)
@@ -288,14 +293,15 @@ if __name__ == '__main__':
     stop_app_filename = data[st.get_app_stop()]
     stop_words = init_stop_words(stop_app_filename)
     ### Transform original input into training and testing dataset
-    app_names = get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=True)
-    print(len(app_names))
+    # app_names = get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=True)
+    # print(len(app_names))
     app_names = get_all_apps_buffered(working_folder, stop_words)
     print(len(app_names))
-    # lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=True)
-    # debug('Finished transforming all data', out_file=True)
-    # Free some memory
-    # # print(len(lines))
+    lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=True)
+    debug('Finished transforming all data', out_file=True)
+    print(len(lines))
+
+
     # ### Test
     # debug('Evaluating application data')
     # output = []
