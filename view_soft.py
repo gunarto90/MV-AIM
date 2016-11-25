@@ -154,9 +154,11 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
     users_data = {}
     for uid in user_ids:
         lines = []
-        user_data = []
-        users_data[uid] = user_data
+        if write is False:
+            user_data = []
+            users_data[uid] = user_data
         filename = SOFT_FORMAT.format(dataset_folder, uid)
+        debug('Transforming : {}'.format(filename))
         with open(filename) as fr:
             # debug(filename, callerid=get_function_name())
             for line in fr:
@@ -180,25 +182,32 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
                 text = soft + ',' + str(act_int)
                 lines.append(text)
                 ### label is put in the first column
-                data = []
-                data.append(act_int)
-                data.extend(app_dist)
-                all_data.append(data)
-                user_data.append(data)
-        if write is True:
-            filename = SOFT_FORMAT.format(working_folder, uid)
-            remove_file_if_exists(filename)
-            write_to_file_buffered(filename, lines)
-        all_lines.extend(lines)
+                if write is False:
+                    data = []
+                    data.append(act_int)
+                    data.extend(app_dist)
+                    all_data.append(data)
+                    user_data.append(data)
+            if write is True:
+                filename = SOFT_FORMAT.format(working_folder, uid)
+                remove_file_if_exists(filename)
+                write_to_file_buffered(filename, lines)
+                del lines[:]
+        if write is False:
+            all_lines.extend(lines)
     return all_lines, all_data, users_data
 
-def get_all_apps(dataset_folder, user_ids):
+def read_dataset_from_file(working_folder, user_ids):
+    pass
+
+def get_all_apps(dataset_folder, user_ids, working_folder, write=False):
     remove_digits = str.maketrans('', '', digits)
     app_names = []
+    debug('Starting get all app names')
     for uid in user_ids:
         filename = SOFT_FORMAT.format(dataset_folder, uid)
         with open(filename) as fr:
-            # debug(filename, callerid=get_function_name())
+            debug(filename, callerid=get_function_name())
             for line in fr:
                 split = line.strip().split(',')
                 app = split[2]
@@ -206,6 +215,19 @@ def get_all_apps(dataset_folder, user_ids):
                 for app_id in app_split:
                     if app_id not in app_names:
                         app_names.append(app_id)
+    debug('Finished get all app names')
+    if write is True:
+        filename = working_folder + 'app_names.txt'
+        remove_file_if_exists(filename)
+        write_to_file_buffered(filename, app_names)
+    return app_names
+
+def get_all_apps_buffered(working_folder):
+    filename = working_folder + 'app_names.txt'
+    app_names = []
+    with open(filename) as fr:
+        for line in fr:
+            app_names.append(line.strip())
     return app_names
 
 ### label is put in the first column
@@ -229,7 +251,7 @@ def testing(dataset, uid):
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
-    debug('--- Program Started ---')
+    debug('--- Program Started ---', out_file=True)
     data, user_ids  = init()
     dataset_folder  = data[st.get_dataset_folder()]
     working_folder  = data[st.get_working_folder()]
@@ -238,24 +260,37 @@ if __name__ == '__main__':
     stop_app_filename = data[st.get_app_stop()]
     stop_words = init_stop_words(stop_app_filename)
     ### Transform original input into training and testing dataset
-    app_names = get_all_apps(dataset_folder, user_ids)
+    # app_names = get_all_apps(dataset_folder, user_ids, working_folder, write=True)
+    # app_names = get_all_apps_buffered(working_folder)
     # print(len(app_names))
-    lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=False)
-    # print(len(lines))
-    ### Test
-    output = []
-    for uid, data in users_data.items():
-        debug('User: {}'.format(uid))
-        debug('#Rows: {}'.format(len(data)))
-        result = testing(data, uid)
-        output.extend(result)
-    debug('All data')
-    debug('#Rows: {}'.format(len(all_data)))
-    result = testing(all_data, 'ALL')
-    output.extend(result)
-    filename = '{}soft_report_{}.csv'.format(working_folder, date.today())
-    remove_file_if_exists(filename)
-    write_to_file_buffered(filename, output)
+    # lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=True)
+    debug('Finished transforming all data', out_file=True)
+    # Free some memory
+    # # print(len(lines))
+    # ### Test
+    # debug('Evaluating application data')
+    # output = []
+    # for uid, data in users_data.items():
+    #     debug('User: {}'.format(uid), out_file=True)
+    #     debug('#Rows: {}'.format(len(data)), out_file=True)
+    #     result = testing(data, uid)
+    #     output.extend(result)
+    # try:
+    #     users_data.clear()
+    # except Exception as ex:
+    #     debug(ex)
+    # debug('All data', out_file=True)
+    # debug('#Rows: {}'.format(len(all_data)), out_file=True)
+    # result = testing(all_data, 'ALL')
+    # output.extend(result)
+    # try:
+    #     del all_data[:]
+    #     del all_data
+    # except Exception as ex:
+    #     debug(ex)
+    # filename = '{}soft_report_{}.csv'.format(working_folder, date.today())
+    # remove_file_if_exists(filename)
+    # write_to_file_buffered(filename, output)
     # print(output)
 
     ### Init sorting mechanism
@@ -276,4 +311,4 @@ if __name__ == '__main__':
     #     print()
     ### Create a tuple for software view model by transforming raw data
     ### {frequency, entropy, entropy_frequency}
-    debug('--- Program Finished ---')
+    debug('--- Program Finished ---', out_file=True)
