@@ -13,10 +13,13 @@ import numpy as np
 import setting as st
 from datetime import datetime, date
 from string import digits
+from collections import defaultdict
 from general import *
 from evaluation import *
 
 SOFT_FORMAT = '{}/{}_soft.csv'
+APP_NAMES   = 'app_names.csv'
+APP_F_THRESHOLD = 1000
 TOP_K = 5
 SORTING = 'ef'  ### ef: entropy frequency, f: frequency, e: entropy
 
@@ -159,6 +162,7 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
             users_data[uid] = user_data
         filename = SOFT_FORMAT.format(dataset_folder, uid)
         debug('Transforming : {}'.format(filename))
+        ctr = 0
         with open(filename) as fr:
             # debug(filename, callerid=get_function_name())
             for line in fr:
@@ -188,21 +192,35 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
                     data.extend(app_dist)
                     all_data.append(data)
                     user_data.append(data)
+                ctr += 1
+                if ctr % 100000 == 0:
+                    debug('Processing {} lines'.format(ctr))
+            debug(len(lines))
             if write is True:
                 filename = SOFT_FORMAT.format(working_folder, uid)
                 remove_file_if_exists(filename)
-                write_to_file_buffered(filename, lines)
+                write_to_file_buffered(filename, lines, buffer_size=1000)
                 del lines[:]
         if write is False:
             all_lines.extend(lines)
     return all_lines, all_data, users_data
 
 def read_dataset_from_file(working_folder, user_ids):
-    pass
+    all_data  = []
+    users_data = {}
+    for uid in user_ids:
+        filename = SOFT_FORMAT.format(dataset_folder, uid)
+        debug('Transforming : {}'.format(filename))
+        ctr = 0
+        with open(filename) as fr:
+            for line in fr:
+                split = line.strip().split(',')
+                act_int = int(split[len(split-1)])
+                app_dist = int(split[0:len(split-2)])
 
-def get_all_apps(dataset_folder, user_ids, working_folder, write=False):
+def get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=False):
     remove_digits = str.maketrans('', '', digits)
-    app_names = []
+    app_names = defaultdict(int)
     debug('Starting get all app names')
     for uid in user_ids:
         filename = SOFT_FORMAT.format(dataset_folder, uid)
@@ -213,21 +231,31 @@ def get_all_apps(dataset_folder, user_ids, working_folder, write=False):
                 app = split[2]
                 app_split = app.translate(remove_digits).replace(':','.').split('.')
                 for app_id in app_split:
-                    if app_id not in app_names:
-                        app_names.append(app_id)
+                    app_names[app_id] += 1
+    for app in stop_words:
+        app_names.pop(app, None)
     debug('Finished get all app names')
     if write is True:
-        filename = working_folder + 'app_names.txt'
+        filename = working_folder + APP_NAMES
         remove_file_if_exists(filename)
-        write_to_file_buffered(filename, app_names)
+        texts = []
+        for k, v in app_names.items():
+            texts.append('{},{}'.format(k,v))
+        write_to_file_buffered(filename, texts)
     return app_names
 
-def get_all_apps_buffered(working_folder):
-    filename = working_folder + 'app_names.txt'
+def get_all_apps_buffered(working_folder, stop_words):
+    filename = working_folder + APP_NAMES
     app_names = []
     with open(filename) as fr:
         for line in fr:
-            app_names.append(line.strip())
+            split = line.strip().split(',')
+            try:
+                f = int(split[1])
+                if f > APP_F_THRESHOLD:
+                    app_names.append(split[0])
+            except:
+                pass
     return app_names
 
 ### label is put in the first column
@@ -260,11 +288,12 @@ if __name__ == '__main__':
     stop_app_filename = data[st.get_app_stop()]
     stop_words = init_stop_words(stop_app_filename)
     ### Transform original input into training and testing dataset
-    # app_names = get_all_apps(dataset_folder, user_ids, working_folder, write=True)
-    # app_names = get_all_apps_buffered(working_folder)
-    # print(len(app_names))
+    app_names = get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=True)
+    print(len(app_names))
+    app_names = get_all_apps_buffered(working_folder, stop_words)
+    print(len(app_names))
     # lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=True)
-    debug('Finished transforming all data', out_file=True)
+    # debug('Finished transforming all data', out_file=True)
     # Free some memory
     # # print(len(lines))
     # ### Test
