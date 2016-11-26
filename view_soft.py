@@ -1,14 +1,15 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.3
-2016/11/24 05:39PM
+Version 1.0.5
+2016/11/26 12:54PM
 """
 import getopt
 import sys
 import re
 import os
 import json
+import pickle
 import numpy as np
 import setting as st
 from datetime import datetime, date
@@ -157,14 +158,16 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
     all_lines = []
     all_data  = []
     users_data = {}
+    ctr_uid = 0
     for uid in user_ids:
+        ctr_uid += 1
         lines = []
         user_data = []
         users_data[uid] = user_data
         filename = SOFT_FORMAT.format(dataset_folder, uid)
         ctr = 0
         with open(filename) as fr:
-            debug('Transforming : {}'.format(filename), callerid=get_function_name(), out_file=True)
+            debug('Transforming : {} [{}/{}]'.format(filename, ctr_uid, len(user_ids)), callerid=get_function_name(), out_file=True)
             previous_time = 0
             for line in fr:
                 split = line.strip().split(',')
@@ -202,7 +205,7 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
                     previous_time = time
                 ctr += 1
                 if ctr % 100000 == 0:
-                    debug('Processing {} lines'.format(ctr), out_file=True)
+                    debug('Processing {:,} lines'.format(ctr), out_file=True)
             debug('len(texts): {}'.format(len(lines)))
             debug('len(file) : {}'.format(ctr))
             if write is True:
@@ -213,15 +216,27 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
         all_lines.extend(lines)
     debug('Started writing all app and users data into binary files', out_file=True)
     if write is True:
-        with open(ALL_APP_NAME, 'wb') as f:
+        with open(working_folder + ALL_APP_NAME, 'wb') as f:
             pickle.dump(all_data, f)
-        with open(USERS_DATA_NAME, 'wb') as f:
+        with open(working_folder + USERS_DATA_NAME, 'wb') as f:
             pickle.dump(users_data, f)
     debug('Finished writing all app and users data into binary files', out_file=True)
     return all_lines, all_data, users_data
 
-def read_dataset_from_file(working_folder, user_ids):
-    pass
+def read_dataset_from_file(working_folder):
+    debug('Started reading dataset from file')
+    try:
+        with open(working_folder + ALL_APP_NAME, 'rb') as f:
+            all_data = pickle.load(f)
+    except:
+        all_data = []
+    try:
+        with open(working_folder + USERS_DATA_NAME, 'rb') as f:
+            users_data = pickle.load(f)
+    except:
+        users_data = {}
+    debug('Finished reading dataset from file')
+    return all_data, users_data
 
 def get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=False):
     remove_digits = str.maketrans('', '', digits)
@@ -293,14 +308,17 @@ if __name__ == '__main__':
     stop_app_filename = data[st.get_app_stop()]
     stop_words = init_stop_words(stop_app_filename)
     ### Transform original input into training and testing dataset
+    ### If the first time
     # app_names = get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=True)
     # print(len(app_names))
+    ### After the first time
     app_names = get_all_apps_buffered(working_folder, stop_words)
-    print(len(app_names))
-    lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=True)
-    debug('Finished transforming all data', out_file=True)
-    print(len(lines))
-
+    debug(len(app_names))
+    ### If the first time
+    # lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=True)
+    ### After the first time
+    all_data, users_data = read_dataset_from_file(working_folder)
+    debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
     # ### Test
     # debug('Evaluating application data')
@@ -326,7 +344,7 @@ if __name__ == '__main__':
     # filename = '{}soft_report_{}.csv'.format(working_folder, date.today())
     # remove_file_if_exists(filename)
     # write_to_file_buffered(filename, output)
-    # print(output)
+    # debug(output)
 
     ### Init sorting mechanism
     # sorting = init_sorting_schemes()
