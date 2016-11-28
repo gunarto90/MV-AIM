@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.5
-2016/11/26 12:54PM
+Version 1.0.8
+2016/11/28 03:34PM
 """
 import getopt
 import sys
@@ -10,21 +10,29 @@ import re
 import os
 import json
 import pickle
+
 import numpy as np
-import setting as st
+import config_directory as cd
+import config_variable as var
+
 from datetime import datetime, date
 from string import digits
 from collections import defaultdict
+
 from general import *
 from evaluation import *
 
 SOFT_FORMAT     = '{}/{}_soft.csv'
+STOP_FILENAME   = 'stop_app.txt'
 APP_NAMES       = 'app_names.csv'
 ALL_APP_NAME    = 'all_app.bin'
 USERS_DATA_NAME = 'users_data.bin'
 APP_F_THRESHOLD = 1000
 TOP_K           = 5
+WEIGHTING       = 'g'   ### ef: entropy frequency, f: frequency, e: entropy, g: general (unweighted)
 SORTING         = 'ef'  ### ef: entropy frequency, f: frequency, e: entropy
+
+COLUMN_NAMES    = 'UID,Classifier,Accuracy,Time(s)'
 
 def read_soft_file_agg(dataset_folder, user_ids):
     apps_agg = []
@@ -32,7 +40,7 @@ def read_soft_file_agg(dataset_folder, user_ids):
     remove_digits = str.maketrans('', '', digits)
     
     for uid in user_ids:
-        filename = SOFT_FORMAT.format(dataset_folder, uid)
+        filename = SOFT_FORMAT.format(cd.dataset_folder, uid)
         with open(filename) as fr:
             # debug(filename, callerid=get_function_name())
             for line in fr:
@@ -153,7 +161,10 @@ def init_sorting_schemes():
     sorting['e']    = (lambda value: value[1]['e'], False)
     return sorting
 
-def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=False):
+"""
+Generating dataset from raw file for the first time
+"""
+def transform_dataset(user_ids, app_names, write=False):
     remove_digits = str.maketrans('', '', digits)
     all_lines = []
     all_data  = []
@@ -164,7 +175,7 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
         lines = []
         user_data = []
         users_data[uid] = user_data
-        filename = SOFT_FORMAT.format(dataset_folder, uid)
+        filename = SOFT_FORMAT.format(cd.dataset_folder, uid)
         ctr = 0
         with open(filename) as fr:
             debug('Transforming : {} [{}/{}]'.format(filename, ctr_uid, len(user_ids)), callerid=get_function_name(), out_file=True)
@@ -209,54 +220,68 @@ def transform_dataset(dataset_folder, working_folder, user_ids, app_names, write
             debug('len(texts): {}'.format(len(lines)))
             debug('len(file) : {}'.format(ctr))
             if write is True:
-                filename = SOFT_FORMAT.format(working_folder, uid)
+                filename = SOFT_FORMAT.format(cd.working_folder, uid)
                 remove_file_if_exists(filename)
                 write_to_file_buffered(filename, lines, buffer_size=1000)
                 del lines[:]
         all_lines.extend(lines)
     debug('Started writing all app and users data into binary files', out_file=True)
     if write is True:
-        with open(working_folder + ALL_APP_NAME, 'wb') as f:
+        with open(cd.working_folder + ALL_APP_NAME, 'wb') as f:
             pickle.dump(all_data, f)
-        with open(working_folder + USERS_DATA_NAME, 'wb') as f:
+        with open(cd.working_folder + USERS_DATA_NAME, 'wb') as f:
             pickle.dump(users_data, f)
     debug('Finished writing all app and users data into binary files', out_file=True)
     return all_lines, all_data, users_data
 
-def read_dataset_from_file(working_folder):
+"""
+Generating dataset from cached file (after the first time)
+"""
+def read_dataset_from_file():
     debug('Started reading dataset from file')
     try:
-        with open(working_folder + ALL_APP_NAME, 'rb') as f:
+        with open(cd.working_folder + ALL_APP_NAME, 'rb') as f:
             all_data = pickle.load(f)
     except:
         all_data = []
     try:
-        with open(working_folder + USERS_DATA_NAME, 'rb') as f:
+        with open(cd.working_folder + USERS_DATA_NAME, 'rb') as f:
             users_data = pickle.load(f)
     except:
         users_data = {}
     debug('Finished reading dataset from file')
     return all_data, users_data
 
-def get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=False):
+"""
+Generating all apps names from raw file for the first time
+"""
+def get_all_apps(user_ids, stop_words, write=False, split=True):
     remove_digits = str.maketrans('', '', digits)
     app_names = defaultdict(int)
     debug('Starting get all app names')
     for uid in user_ids:
-        filename = SOFT_FORMAT.format(dataset_folder, uid)
-        with open(filename) as fr:
-            debug(filename, callerid=get_function_name())
-            for line in fr:
-                split = line.strip().split(',')
-                app = split[2]
-                app_split = app.translate(remove_digits).replace(':','.').split('.')
-                for app_id in app_split:
-                    app_names[app_id] += 1
+        filename = SOFT_FORMAT.format(cd.dataset_folder, uid)
+        try:
+            with open(filename) as fr:
+                debug(filename, callerid=get_function_name())
+                for line in fr:
+                    split = line.strip().split(',')
+                    app = split[2]
+                    if split is True:
+                        app_split = app.translate(remove_digits).replace(':','.').split('.')
+                        for app_id in app_split:
+                            app_names[app_id] += 1
+                    else:
+                        split = app.split(':')
+                        app_id = split[0]
+                        app_names[app_id] += 1
+        except Exception as ex:
+            debug('Exception: {}'.format(ex), callerid='get_all_apps')
     for app in stop_words:
         app_names.pop(app, None)
     debug('Finished get all app names')
     if write is True:
-        filename = working_folder + APP_NAMES
+        filename = cd.working_folder + APP_NAMES
         remove_file_if_exists(filename)
         texts = []
         for k, v in app_names.items():
@@ -264,8 +289,11 @@ def get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=Fal
         write_to_file_buffered(filename, texts)
     return app_names
 
-def get_all_apps_buffered(working_folder, stop_words):
-    filename = working_folder + APP_NAMES
+"""
+Generating all apps names from cached file (after the first time)
+"""
+def get_all_apps_buffered(stop_words):
+    filename = cd.working_folder + APP_NAMES
     app_names = []
     with open(filename) as fr:
         for line in fr:
@@ -279,7 +307,8 @@ def get_all_apps_buffered(working_folder, stop_words):
     return app_names
 
 ### label is put in the first column
-def testing(dataset, uid):
+def testing(dataset, uid, cached=True):
+    debug('Processing: {}'.format(uid))
     dataset = np.array(dataset)
     clfs = classifier_list()
     # print(dataset.shape)
@@ -287,38 +316,77 @@ def testing(dataset, uid):
     X = dataset[:,1:ncol] # Remove index 0 
     y = dataset[:,0]
     texts = []
+    info = {}
+    info['uid'] = uid
     for name, clf in clfs.items():
-        # debug(name)
-        output = evaluation(X, y, clf)
+        debug(name)
+        info['clf_name'] = name
+        output = evaluation(X, y, clf, info=info, cached=cached)
         acc = output['acc']
         time = output['time']
         text = '{},{},{},{}'.format(uid, name, acc, time)
         texts.append(text)
     return texts
 
+### Generating testing report per user
+def generate_testing_report_single(users_data, user_ids, clear_data=False):
+    # ### Test
+    debug('Evaluating application data (single)', out_file=True)
+    output = []
+    output.append(COLUMN_NAMES)
+    ctr_uid = 0
+    for uid, data in users_data.items():
+        ctr_uid += 1
+        debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(users_data)), out_file=True)
+        debug('#Rows: {}'.format(len(data)), out_file=True)
+        if uid not in user_ids:
+            continue
+        result = testing(data, uid)
+        output.extend(result)
+    if clear_data is True:
+        try:
+            users_data.clear()
+        except Exception as ex:
+            debug(ex)
+    filename = '{}soft_report_single_{}.csv'.format(cd.working_folder, date.today())
+    remove_file_if_exists(filename)
+    write_to_file_buffered(filename, output)
+    debug(output)
+
+### Generating testing report for all users
+def generate_testing_report_agg(all_data, clear_data=False):
+    debug('Evaluating application data (single)', out_file=True)
+    debug('#Rows: {}'.format(len(all_data)), out_file=True)
+    output = []
+    output.append(COLUMN_NAMES)
+    output.extend(testing(all_data, 'ALL'))
+    if clear_data is True:
+        try:
+            del all_data[:]
+            del all_data
+        except Exception as ex:
+            debug(ex)
+    filename = '{}soft_report_agg_{}.csv'.format(cd.working_folder, date.today())
+    remove_file_if_exists(filename)
+    write_to_file_buffered(filename, output)
+    debug(output)
+
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
-    data, user_ids  = init()
-    dataset_folder  = data[st.get_dataset_folder()]
-    working_folder  = data[st.get_working_folder()]
-    activities      = data[st.get_activities()]
+    user_ids  = init()
     ### Stop words for specific app names
-    stop_app_filename = data[st.get_app_stop()]
-    stop_words = init_stop_words(stop_app_filename)
+    stop_words = init_stop_words(STOP_FILENAME)
     ### Transform original input into training and testing dataset
-    ### If the first time
-    # app_names = get_all_apps(dataset_folder, user_ids, stop_words, working_folder, write=True)
-    # print(len(app_names))
-    ### After the first time
-    app_names = get_all_apps_buffered(working_folder, stop_words)
-    debug(len(app_names))
-    ### If the first time
-    # lines, all_data, users_data = transform_dataset(dataset_folder, working_folder, user_ids, app_names, write=True)
-    ### After the first time
-    all_data, users_data = read_dataset_from_file(working_folder)
-    debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+    app_names = get_all_apps_buffered(stop_words)
+    debug('len(app_names): {}'.format(len(app_names)))
+    ### Read dataset for the experiments
+    # all_data, users_data = read_dataset_from_file()
+    # debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+    ### Generate testing report using machine learning evaluation
+    # generate_testing_report_single(users_data, user_ids, clear_data=True)
+    # generate_testing_report_agg(all_data, clear_data=False)
 
     # ### Test
     # debug('Evaluating application data')
@@ -341,7 +409,7 @@ if __name__ == '__main__':
     #     del all_data
     # except Exception as ex:
     #     debug(ex)
-    # filename = '{}soft_report_{}.csv'.format(working_folder, date.today())
+    # filename = '{}soft_report_{}.csv'.format(cd.working_folder, date.today())
     # remove_file_if_exists(filename)
     # write_to_file_buffered(filename, output)
     # debug(output)
@@ -349,7 +417,7 @@ if __name__ == '__main__':
     ### Init sorting mechanism
     # sorting = init_sorting_schemes()
     ### Read software files
-    # apps_agg, apps_single = read_soft_file_agg(dataset_folder, user_ids)
+    # apps_agg, apps_single = read_soft_file_agg(user_ids)
     # debug('len(apps_agg): {}'.format(len(apps_agg)))
     # debug('len(apps_single): {}'.format(len(apps_single)))
     # debug('Activities: {}'.format(activities))
