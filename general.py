@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.2
-2016/11/26 12:54PM
+Version 1.0.3
+2016/11/28 09:47AM
 """
 import os
 import math

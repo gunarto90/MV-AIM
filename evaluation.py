@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.1
-2016/11/24 05:39PM
+Version 1.0.3
+2016/11/28 01:27PM
 """
 from general import *
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
@@ -18,6 +18,9 @@ from scipy import interp
 
 import numpy as np
 import time
+import pickle
+
+MODEL_FILENAME = '{}_{}_{}_{}.bin'  # uid clf_name #iter #total
 
 def classifier_list():
     clfs = {}
@@ -38,14 +41,14 @@ X: training dataset (features)
 y: testing dataset  (label)
 clf: classifier
 """
-def evaluation(X, y, clf, k_fold=5):
+def evaluation(X, y, clf, k_fold=5, info={}, cached=False):
     output = {}
-    mean_tpr = 0.0
-    mean_fpr = np.linspace(0, 1, 100)
+    # mean_tpr = 0.0
+    # mean_fpr = np.linspace(0, 1, 100)
 
-    mean_precision = 0.0
-    mean_recall = 0.0
-    mean_f1 = 0.0
+    # mean_precision = 0.0
+    # mean_recall = 0.0
+    # mean_f1 = 0.0
     mean_acc = 0.0
 
     total_ytrue = sum(y)
@@ -54,9 +57,25 @@ def evaluation(X, y, clf, k_fold=5):
 
     i = 0
     train_time = 0
+    n_split = cv.get_n_splits(X, y)
     for (train, test) in cv.split(X, y):
+        uid = info.get('uid')
+        clf_name = info.get('clf_name')
+        filename = None
+        if uid is not None and clf_name is not None:
+            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split)
+
         query_time = time.time()
-        fit = clf.fit(X[train], y[train])
+        if cached:
+            try:
+                if filename is None:
+                    raise Exception('Filename is None')
+                with open(cd.model_folder + filename, 'rb') as f:
+                    fit = pickle.load(f)
+            except:
+                fit = clf.fit(X[train], y[train])
+        elif cached is False:
+            fit = clf.fit(X[train], y[train])
         train_time += (time.time() - query_time)
         probas_ = fit.predict_proba(X[test])
         inference = fit.predict(X[test])
@@ -73,17 +92,20 @@ def evaluation(X, y, clf, k_fold=5):
         # f1 = f1_score(y[test], inference, average=average)
         acc = accuracy_score(y[test], inference)
 
+        if filename is not None:
+            with open(cd.model_folder + filename, 'wb') as f:
+                pickle.dump(fit, f)
+
         # mean_precision += precision
         # mean_recall += recall
         # mean_f1 += f1
         mean_acc += acc
         # debug(roc_auc)
         i += 1
-    # mean_tpr /= cv.get_n_splits(X, y)
+    # mean_tpr /= n_split
     # mean_tpr[-1] = 1.0
     # mean_auc = auc(mean_fpr, mean_tpr)
 
-    n_split = cv.get_n_splits(X, y)
     # mean_precision /= n_split
     # mean_recall /= n_split
     # mean_f1 /= n_split
