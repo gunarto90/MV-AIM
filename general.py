@@ -11,21 +11,21 @@ import inspect
 from datetime import datetime
 from datetime import date
 from math import radians, cos, sin, asin, sqrt, pow, exp
-import setting as st
+
+import config_directory as cd
+import config_variable as var
 
 IS_DEBUG = True
 
-def init(file='setting.json', users='users.json'):
+def init(file='users.json'):
     user_ids = None
     try:
         with open(file) as data_file:
-            data = json.load(data_file)
-        with open(users) as data_file:
             load = json.load(data_file)
-            user_ids = load[st.get_uids()]
+            user_ids = load['users']
     except Exception as ex:
         debug(ex, callerid='init - json')
-    return data, user_ids
+    return user_ids
 
 def get_function_name():
     return inspect.stack()[1][3]
@@ -81,8 +81,8 @@ def write_to_file_buffered(filename, text_list, append=True, buffer_size=10000):
         write_to_file(filename, temp_str, append, add_linefeed=False)
 
 def debug(message, callerid=None, clean=False, out_stdio=True, out_file=False):
-    make_sure_path_exists(st.get_log_folder())
-    debug_filename = 'log/log_{}.txt'.format(date.today())
+    make_sure_path_exists(cd.log_folder)
+    debug_filename = '{}/log_{}.txt'.format(cd.log_folder, date.today())
     if IS_DEBUG == False:
         return
     text = ''
