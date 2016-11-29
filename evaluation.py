@@ -1,18 +1,19 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.3
-2016/11/28 01:27PM
+Version 1.0.4
+2016/11/29 11:23AM
 """
 from general import *
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from sklearn.metrics import roc_curve, auc
 from sklearn.model_selection import StratifiedKFold
 
-from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC, LinearSVC
+from sklearn.ensemble import RandomForestClassifier, IsolationForest, ExtraTreesClassifier
+from sklearn.ensemble import GradientBoostingClassifier, AdaBoostClassifier, BaggingClassifier
 from sklearn.naive_bayes import GaussianNB, BernoulliNB, MultinomialNB
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
 
 from scipy import interp
 
@@ -24,16 +25,30 @@ MODEL_FILENAME = '{}_{}_{}_{}.bin'  # uid clf_name #iter #total
 
 def classifier_list():
     clfs = {}
-    ### Random Forests
-    clfs['rf'] = RandomForestClassifier(n_jobs=4)
+    ### Forests
+    clfs['grf']     = RandomForestClassifier(n_jobs=4, criterion='gini')
+    clfs['erf']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
+    clfs['isf']     = IsolationForest()
+    clfs['etr']     = ExtraTreesClassifier()
+    ### Boosting
+    clfs['gbc']     = GradientBoostingClassifier()
+    clfs['ada']     = AdaBoostClassifier()
+    clfs['bag']     = BaggingClassifier()
     ### SVM
-    clfs['svm'] = SVC(probability=True)
+    clfs['lsvm']    = LinearSVC()
+    # clfs['qsvm']    = SVC(probability=True, kernel='poly', degree=2)  # Slow
+    # clfs['psvm']    = SVC(probability=True, kernel='poly', degree=3)  # Slow
+    # clfs['ssvm']    = SVC(probability=True, kernel='sigmoid')         # Slow
+    # clfs['rsvm']    = SVC(probability=True, kernel='rbf')             # Slow
     ### Naive Bayes
-    clfs['gnb'] = GaussianNB()
-    clfs['bnb'] = BernoulliNB() # Best ?
-    clfs['mnb'] = MultinomialNB()
+    clfs['gnb']     = GaussianNB()      # Worst
+    clfs['bnb']     = BernoulliNB()     # Good
+    clfs['mnb']     = MultinomialNB()   # Best
     ### Decision Tree (CART)
-    clfs['tree'] = DecisionTreeClassifier()
+    clfs['gdt']     = DecisionTreeClassifier(criterion='gini')
+    clfs['edt']     = DecisionTreeClassifier(criterion='entropy')
+    clfs['egt']     = ExtraTreeClassifier(criterion='gini')
+    clfs['eet']     = ExtraTreeClassifier(criterion='entropy')
     return clfs
 
 """
@@ -77,7 +92,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False):
         elif cached is False:
             fit = clf.fit(X[train], y[train])
         train_time += (time.time() - query_time)
-        probas_ = fit.predict_proba(X[test])
+        # probas_ = fit.predict_proba(X[test])
         inference = fit.predict(X[test])
         # Compute ROC curve and area the curve
         # fpr, tpr, thresholds = roc_curve(y[test], probas_[:, 1])
