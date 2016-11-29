@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.8
-2016/11/28 03:34PM
+Version 1.0.9
+2016/11/29 11:24AM
 """
 import getopt
 import sys
@@ -341,17 +341,17 @@ def generate_testing_report_single(users_data, user_ids, clear_data=False):
         debug('#Rows: {}'.format(len(data)), out_file=True)
         if uid not in user_ids:
             continue
-        result = testing(data, uid)
+        result = testing(data, uid, cached=False)
         output.extend(result)
     if clear_data is True:
         try:
             users_data.clear()
         except Exception as ex:
             debug(ex)
-    filename = '{}soft_report_single_{}.csv'.format(cd.working_folder, date.today())
+    filename = '{}soft_report_single_{}.csv'.format(cd.report_folder, date.today())
     remove_file_if_exists(filename)
     write_to_file_buffered(filename, output)
-    debug(output)
+    # debug(output)
 
 ### Generating testing report for all users
 def generate_testing_report_agg(all_data, clear_data=False):
@@ -366,10 +366,10 @@ def generate_testing_report_agg(all_data, clear_data=False):
             del all_data
         except Exception as ex:
             debug(ex)
-    filename = '{}soft_report_agg_{}.csv'.format(cd.working_folder, date.today())
+    filename = '{}soft_report_agg_{}.csv'.format(cd.report_folder, date.today())
     remove_file_if_exists(filename)
     write_to_file_buffered(filename, output)
-    debug(output)
+    # debug(output)
 
 # Main function
 if __name__ == '__main__':
@@ -382,10 +382,10 @@ if __name__ == '__main__':
     app_names = get_all_apps_buffered(stop_words)
     debug('len(app_names): {}'.format(len(app_names)))
     ### Read dataset for the experiments
-    # all_data, users_data = read_dataset_from_file()
-    # debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+    all_data, users_data = read_dataset_from_file()
+    debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
     ### Generate testing report using machine learning evaluation
-    # generate_testing_report_single(users_data, user_ids, clear_data=True)
+    generate_testing_report_single(users_data, user_ids, clear_data=True)
     # generate_testing_report_agg(all_data, clear_data=False)
 
     # ### Test
