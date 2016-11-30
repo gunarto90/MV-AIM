@@ -25,6 +25,7 @@ from evaluation import *
 SOFT_FORMAT     = '{}/{}_soft.csv'
 STOP_FILENAME   = 'stop_app.txt'
 APP_NAMES       = 'app_names.csv'
+APP_FULL_NAMES  = 'app_names_fullname.csv'
 ALL_APP_NAME    = 'all_app.bin'
 USERS_DATA_NAME = 'users_data.bin'
 APP_F_THRESHOLD = 1000
@@ -164,7 +165,7 @@ def init_sorting_schemes():
 """
 Generating dataset from raw file for the first time
 """
-def transform_dataset(user_ids, app_names, write=False):
+def transform_dataset(user_ids, app_names, write=False, category=None):
     remove_digits = str.maketrans('', '', digits)
     all_lines = []
     all_data  = []
@@ -237,19 +238,23 @@ def transform_dataset(user_ids, app_names, write=False):
 """
 Generating dataset from cached file (after the first time)
 """
-def read_dataset_from_file():
+def read_dataset_from_file(read_all=True, read_users=True):
     debug('Started reading dataset from file')
-    try:
-        with open(cd.working_folder + ALL_APP_NAME, 'rb') as f:
-            all_data = pickle.load(f)
-    except:
-        all_data = []
-    try:
-        with open(cd.working_folder + USERS_DATA_NAME, 'rb') as f:
-            users_data = pickle.load(f)
-    except:
-        users_data = {}
-    debug('Finished reading dataset from file')
+    all_data = []
+    users_data = {}
+    if read_all:
+        try:
+            with open(cd.working_folder + ALL_APP_NAME, 'rb') as f:
+                all_data = pickle.load(f)
+        except:
+            pass
+    if read_users:
+        try:
+            with open(cd.working_folder + USERS_DATA_NAME, 'rb') as f:
+                users_data = pickle.load(f)
+        except:
+            pass
+        debug('Finished reading dataset from file')
     return all_data, users_data
 
 """
@@ -292,8 +297,11 @@ def get_all_apps(user_ids, stop_words, write=False, split=True):
 """
 Generating all apps names from cached file (after the first time)
 """
-def get_all_apps_buffered(stop_words):
-    filename = cd.working_folder + APP_NAMES
+def get_all_apps_buffered(stop_words, full=False):
+    if full is False:
+        filename = cd.working_folder + APP_NAMES
+    else:
+        filename = cd.working_folder + APP_FULL_NAMES
     app_names = []
     with open(filename) as fr:
         for line in fr:
@@ -379,13 +387,13 @@ if __name__ == '__main__':
     ### Stop words for specific app names
     stop_words = init_stop_words(STOP_FILENAME)
     ### Transform original input into training and testing dataset
-    app_names = get_all_apps_buffered(stop_words)
+    app_names = get_all_apps_buffered(stop_words, full=False)
     debug('len(app_names): {}'.format(len(app_names)))
     ### Read dataset for the experiments
-    all_data, users_data = read_dataset_from_file()
+    all_data, users_data = read_dataset_from_file(read_all=False, read_users=True)
     debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
     ### Generate testing report using machine learning evaluation
-    generate_testing_report_single(users_data, user_ids, clear_data=True)
+    # generate_testing_report_single(users_data, user_ids, clear_data=True)
     # generate_testing_report_agg(all_data, clear_data=False)
 
     # ### Test
