@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.1
-2016/12/01 11:59AM
+Version 1.0.2
+2016/12/01 08.52PM
 """
 
 """
@@ -10,12 +10,20 @@ No logic code here !
 This file just declares the variables that are used throughout the other python files.
 """
 
-dataset_folder  = 'dataset/'
-working_folder  = 'working/'
-log_folder      = 'log/'
-model_folder    = 'model/'
-report_folder   = 'report/'
+SOFTWARE                = 'app/'
+SPATIAL                 = 'spatial/'
+TEMPORAL                = 'temporal/'
 
-software_folder = working_folder + 'app/'
-spatial_folder  = working_folder + 'spatial/'
-temporal_folder = working_folder + 'temporal/'
+CROSS_VALIDATION        = 'cv/'
+
+dataset_folder          = 'dataset/'
+working_folder          = 'working/'
+log_folder              = 'log/'
+model_folder            = 'model/'
+report_folder           = 'report/'
+
+software_folder         = working_folder + SOFTWARE
+spatial_folder          = working_folder + SPATIAL
+temporal_folder         = working_folder + TEMPORAL
+
+soft_cv_model_folder    = model_folder + SOFTWARE + CROSS_VALIDATION
