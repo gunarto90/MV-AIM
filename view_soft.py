@@ -29,7 +29,6 @@ from collections import defaultdict
 
 from general import *
 from evaluation import *
-from helper import *
 
 APP_PART_NAMES          = 'app_names_part.csv'
 APP_FULL_NAMES          = 'app_names_full.csv'
@@ -42,12 +41,13 @@ SOFT_PART_FORMAT        = '{}/{}_soft_part.csv'     ## Processed: part name
 SOFT_FULL_FORMAT        = '{}/{}_soft_full.csv'     ## Processed: full name
 SOFT_CATEGORY_FORMAT    = '{}/{}_soft_cat.csv'      ## Processed: category
 
-ALL_APP_NAME            = 'all_app.bin'
-ALL_APP_CAT_NAME        = 'all_app_cat.bin'
-
 USERS_DATA_PART_NAME    = 'users_part_data.bin'
 USERS_DATA_FULL_NAME    = 'users_full_data.bin'
 USERS_DATA_CAT_NAME     = 'users_cat_data.bin'
+
+REPORT_PART_NAME        = '{}/soft_report_part_{}.csv'
+REPORT_FULL_NAME        = '{}/soft_report_full_{}.csv'
+REPORT_CAT_NAME         = '{}/soft_report_cat_{}.csv'
 
 APP_F_THRESHOLD         = 1000
 TIME_WINDOW             = 1000  ## in ms
@@ -213,7 +213,6 @@ Generating dataset from raw file for the first time
 """
 def transform_dataset(user_ids, app_names, write=False, full=False, categories=None, app_cat=None):
     remove_digits = str.maketrans('', '', digits)
-    all_lines = []
     users_data = {}
     ctr_uid = 0
     for uid in user_ids:
@@ -263,7 +262,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                         app_dist.append(0)
                     cat = app_cat.get(app.strip())
                     if cat is not None:
-                        app_dist[cat-1] += 1
+                        app_dist[cat] += 1
                 if time != previous_time:
                     if sum(app_dist) > 0:
                         soft = (','.join(str(x) for x in app_dist))
@@ -292,7 +291,6 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                 remove_file_if_exists(filename)
                 write_to_file_buffered(filename, lines, buffer_size=1000)
                 del lines[:]
-        all_lines.extend(lines)
     debug('Started writing all app and users data into binary files', out_file=True)
     if write:
         if categories is None:
@@ -305,7 +303,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
         with open(cd.software_folder + filename, 'wb') as f:
             pickle.dump(users_data, f)
     debug('Finished writing all app and users data into binary files', out_file=True)
-    return all_lines, users_data
+    return users_data
 
 """
 Generating dataset from cached file (after the first time)
@@ -389,7 +387,7 @@ def get_all_apps_buffered(stop_words, full=False):
     return app_names
 
 ### label is put in the first column
-def testing(dataset, uid, cached=True):
+def testing(dataset, uid, cached=True, mode='Default'):
     debug('Processing: {}'.format(uid))
     dataset = np.array(dataset)
     clfs = classifier_list()
@@ -403,7 +401,7 @@ def testing(dataset, uid, cached=True):
     for name, clf in clfs.items():
         debug(name)
         info['clf_name'] = name
-        output = evaluation(X, y, clf, info=info, cached=cached)
+        output = evaluation(X, y, clf, info=info, cached=cached, mode=mode)
         acc = output['acc']
         time = output['time']
         text = '{},{},{},{}'.format(uid, name, acc, time)
@@ -411,40 +409,51 @@ def testing(dataset, uid, cached=True):
     return texts
 
 ### Generating testing report per user
-def generate_testing_report_single(users_data, user_ids, clear_data=False):
+def generate_testing_report_single(users_data, user_ids, clear_data=False, full=False, categories=None):
     # ### Test
     debug('Evaluating application data (single)', out_file=True)
     output = []
     output.append(COLUMN_NAMES)
     ctr_uid = 0
+    if categories is not None:
+        mode = 'cat'
+    elif full:
+        mode = 'full'
+    else:
+        mode = 'part'
     for uid, data in users_data.items():
         ctr_uid += 1
         debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(users_data)), out_file=True)
         debug('#Rows: {}'.format(len(data)), out_file=True)
         if uid not in user_ids:
             continue
-        result = testing(data, uid, cached=False)
+        result = testing(data, uid, cached=True, mode=mode)
         output.extend(result)
     if clear_data:
         try:
             users_data.clear()
         except Exception as ex:
             debug(ex)
-    filename = '{}soft_report_single_{}.csv'.format(cd.report_folder, date.today())
+    if categories is not None:
+        filename = REPORT_CAT_NAME.format(cd.report_folder, date.today())
+    elif full:
+        filename = REPORT_FULL_NAME.format(cd.report_folder, date.today())
+    else:
+        filename = REPORT_PART_NAME.format(cd.report_folder, date.today())
     remove_file_if_exists(filename)
     write_to_file_buffered(filename, output)
     # debug(output)
 
 ### Generating testing report for all users
 def generate_testing_report_agg(users_data, clear_data=False):
-    debug('Evaluating application data (single)', out_file=True)
+    debug('Evaluating application data (agg)', out_file=True)
     pass
 
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
-    full_app_name = True
+    full_app_name = False
 
     ### Init user ids
     user_ids  = init()
@@ -453,8 +462,10 @@ if __name__ == '__main__':
     stop_words = init_stop_words(STOP_FILENAME)
 
     ### Apps categories
-    categories = init_categories()
-    app_cat = init_app_category()
+    categories = None
+    app_cat = None
+    # categories = init_categories()
+    # app_cat = init_app_category()
 
     ### Transform original input into training and testing dataset
     # app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name) ## Only for 1st time
@@ -462,12 +473,12 @@ if __name__ == '__main__':
     debug('len(app_names): {}'.format(len(app_names)))
 
     ### Read dataset for the experiments
-    # transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat)   ## Only for 1st time
+    # users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat)   ## Only for 1st time
     users_data = read_dataset_from_file(full=full_app_name, categories=categories)
     debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
     ### Generate testing report using machine learning evaluation
-    # generate_testing_report_single(users_data, user_ids, clear_data=True)
+    generate_testing_report_single(users_data, user_ids, clear_data=True, full=full_app_name, categories=categories)
     # generate_testing_report_agg(users_data, clear_data=False)
 
     # ### Test
