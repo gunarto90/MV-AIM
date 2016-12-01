@@ -98,7 +98,7 @@ def activity_to_int(act, activities):
         if a == act:
             return idx
         idx += 1
-    debug(act, get_function_name())
+    # debug(act, get_function_name())
     return -1
 
 def entropy(data, basis=2):

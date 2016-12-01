@@ -16,19 +16,21 @@ from sklearn.naive_bayes import GaussianNB, BernoulliNB, MultinomialNB
 from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
 
 from scipy import interp
+from math import sqrt
 
 import numpy as np
 import time
+import scipy
 import pickle
 
-MODEL_FILENAME = '{}_{}_{}_{}.bin'  # uid clf_name #iter #total
+MODEL_FILENAME = '{}_{}_{}_{}_{}.bin'  # uid clf_name #iter #total mode
 
 def classifier_list():
     clfs = {}
     ### Forests
     clfs['grf']     = RandomForestClassifier(n_jobs=4, criterion='gini')
     clfs['erf']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
-    clfs['isf']     = IsolationForest()
+    # clfs['isf']     = IsolationForest()
     clfs['etr']     = ExtraTreesClassifier()
     ### Boosting
     clfs['gbc']     = GradientBoostingClassifier()
@@ -56,7 +58,7 @@ X: training dataset (features)
 y: testing dataset  (label)
 clf: classifier
 """
-def evaluation(X, y, clf, k_fold=5, info={}, cached=False):
+def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default'):
     output = {}
     # mean_tpr = 0.0
     # mean_fpr = np.linspace(0, 1, 100)
@@ -78,7 +80,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False):
         clf_name = info.get('clf_name')
         filename = None
         if uid is not None and clf_name is not None:
-            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split)
+            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode)
 
         query_time = time.time()
         if cached:

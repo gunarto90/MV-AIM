@@ -18,3 +18,4 @@ xiaomi
 pushservice
 remote
 push
+sonyericsson
