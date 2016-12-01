@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.4
-2016/11/29 11:23AM
+Version 1.0.5
+2016/12/01 10:22PM
 """
 from general import *
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
@@ -73,7 +73,8 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default'):
     cv = StratifiedKFold(n_splits=k_fold)
 
     i = 0
-    train_time = 0
+    train_time = 0.0
+    test_time = 0.0
     n_split = cv.get_n_splits(X, y)
     for (train, test) in cv.split(X, y):
         uid = info.get('uid')
@@ -95,7 +96,9 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default'):
             fit = clf.fit(X[train], y[train])
         train_time += (time.time() - query_time)
         # probas_ = fit.predict_proba(X[test])
+        query_time = time.time()
         inference = fit.predict(X[test])
+        test_time += (time.time() - query_time)
         # Compute ROC curve and area the curve
         # fpr, tpr, thresholds = roc_curve(y[test], probas_[:, 1])
         # mean_tpr += interp(mean_fpr, fpr, tpr)
@@ -103,7 +106,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default'):
         # roc_auc = auc(fpr, tpr)
 
         # precision, recall, thresholds = precision_recall_curve(y[test], probas_[:, 1])
-        average = 'weighted'
+        # average = 'weighted'
         # precision = precision_score(y[test], inference, average=average)
         # recall = recall_score(y[test], inference, average=average)
         # f1 = f1_score(y[test], inference, average=average)
@@ -128,13 +131,21 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default'):
     # mean_f1 /= n_split
     mean_acc /= n_split
     train_time /= n_split
+    test_time /= n_split
 
     # output['auc']   = mean_auc
     # output['p']     = mean_precision
     # output['r']     = mean_recall
     # output['f1']    = mean_f1
-    output['acc']   = mean_acc
-    output['time']   = train_time
+    output['acc']           = mean_acc
+    output['time_train']    = train_time
+    output['time_test']     = test_time
     # output['y1']    = total_ytrue
 
     return output
+
+"""
+Application view's evaluation using top-k and scoring method
+"""
+def soft_evaluation(X, y, top_k_apps, weighting):
+    pass

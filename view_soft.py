@@ -1,11 +1,18 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.10
-2016/12/01 09:20PM
+Version 1.0.11
+2016/12/01 10:22PM
 """
+## ToDo !!: From the users_data --> generate activity X apps vector which shows the score of each apps regarding its {frequency, entropy, entropy-frequency, other}
 """
 
+- Fixed bug on cached is True, when the file is not available
+- Added uid parameter in apps stats and acts stats
+- Added testing time in evaluation
+- Added new sorting method (erf) : entropy and sqrt of frequency
+- Added uid in the dataset
+- Added loop in the main function for various mode
 """
 import getopt
 import sys
@@ -22,6 +29,7 @@ import config_variable as var
 from datetime import datetime, date
 from string import digits
 from collections import defaultdict
+from math import sqrt
 
 from general import *
 from evaluation import *
@@ -32,13 +40,13 @@ CATEGORY_NAME           = 'category_lookup.csv'
 APP_CATEGORY            = 'app_category.csv'
 STOP_FILENAME           = 'stop_app.txt'
 
-APP_STATS_PART          = 'app_stats_part.bin'
-APP_STATS_FULL          = 'app_stats_full.bin'
-APP_STATS_CAT           = 'app_stats_cat.bin'
+APP_STATS_PART          = 'app_stats_part_{}.bin'
+APP_STATS_FULL          = 'app_stats_full_{}.bin'
+APP_STATS_CAT           = 'app_stats_cat_{}.bin'
 
-ACTS_STATS_PART         = 'acts_stats_part.bin'
-ACTS_STATS_FULL         = 'acts_stats_full.bin'
-ACTS_STATS_CAT          = 'acts_stats_cat.bin'
+ACTS_STATS_PART         = 'acts_stats_part_{}.bin'
+ACTS_STATS_FULL         = 'acts_stats_full_{}.bin'
+ACTS_STATS_CAT          = 'acts_stats_cat_{}.bin'
 
 SOFT_FORMAT             = '{}/{}_soft.csv'          ## Original app data
 SOFT_PART_FORMAT        = '{}/{}_soft_part.csv'     ## Processed: part name
@@ -56,11 +64,10 @@ REPORT_CAT_NAME         = '{}/soft_report_cat_{}.csv'
 APP_F_THRESHOLD         = 1000  ## Minimum occurrence of the app throughout the dataset
 TIME_WINDOW             = 1000  ## in ms
 
-TOP_K                   = 10
-WEIGHTING               = 'g'   ### ef: entropy frequency, f: frequency, e: entropy, g: general (unweighted)
-SORTING                 = 'e'  ### ef: entropy frequency, f: frequency, e: entropy
+DEFAULT_SORTING         = 'f'       ### ef: entropy frequency, f: frequency, e: entropy
+WEIGHTING               = 'g'       ### ef: entropy frequency, f: frequency, e: entropy, g: general (unweighted), r: rank on list
 
-COLUMN_NAMES            = 'UID,Classifier,Accuracy,Time(s)'
+COLUMN_NAMES            = 'UID,Classifier,Accuracy,TrainTime(s),TestTime(s)'
 
 def aggregate_apps(user_ids, full=False, categories=None, app_cat=None):
     apps_agg = []
@@ -177,9 +184,13 @@ def app_statistics(stop_words, apps_single):
     normalize_app_statistics(app_stats, acts_app)
     return app_stats, acts_app
 
-def extract_statistics(user_ids, stop_words, full=False, categories=None, app_cat=None, cached=False):
+def extract_statistics(user_ids, stop_words, uid, full=False, categories=None, app_cat=None, cached=False):
+    ### If cached
     if cached:
-        return extract_statistics_cached(full=full, categories=categories)
+        app_stats, acts_app = extract_statistics_cached(uid, full=full, categories=categories)
+        if app_stats is not None and acts_app is not None:
+            return app_stats, acts_app
+    ### If not cached
     apps_agg, apps_single = aggregate_apps(user_ids, full=full, categories=categories, app_cat=app_cat)
 
     debug('len(apps_agg): {}'.format(len(apps_agg)))
@@ -190,37 +201,37 @@ def extract_statistics(user_ids, stop_words, full=False, categories=None, app_ca
 
     ### Dump the statistics (app stats)
     if categories is not None:
-        filename = APP_STATS_CAT
+        filename = APP_STATS_CAT.format(uid)
     elif full:
-        filename = APP_STATS_FULL
+        filename = APP_STATS_FULL.format(uid)
     else:
-        filename = APP_STATS_PART
+        filename = APP_STATS_PART.format(uid)
     with open(cd.software_folder + filename, 'wb') as f:
         pickle.dump(app_stats, f)
 
     ### Dump the statistics (acts stats)
     if categories is not None:
-        filename = ACTS_STATS_CAT
+        filename = ACTS_STATS_CAT.format(uid)
     elif full:
-        filename = ACTS_STATS_FULL
+        filename = ACTS_STATS_FULL.format(uid)
     else:
-        filename = ACTS_STATS_PART
+        filename = ACTS_STATS_PART.format(uid)
     with open(cd.software_folder + filename, 'wb') as f:
         pickle.dump(acts_app, f)
 
     return app_stats, acts_app
 
-def extract_statistics_cached(full=False, categories=None):
+def extract_statistics_cached(uid, full=False, categories=None):
     app_stats = None
     acts_app = None
     ### Load the statistics (app stats)
     try:
         if categories is not None:
-            filename = APP_STATS_CAT
+            filename = APP_STATS_CAT.format(uid)
         elif full:
-            filename = APP_STATS_FULL
+            filename = APP_STATS_FULL.format(uid)
         else:
-            filename = APP_STATS_PART
+            filename = APP_STATS_PART.format(uid)
         with open(cd.software_folder + filename, 'rb') as f:
             app_stats = pickle.load(f)
     except Exception as ex:
@@ -229,11 +240,11 @@ def extract_statistics_cached(full=False, categories=None):
     ### Load the statistics (acts stats)
     try:
         if categories is not None:
-            filename = ACTS_STATS_CAT
+            filename = ACTS_STATS_CAT.format(uid)
         elif full:
-            filename = ACTS_STATS_FULL
+            filename = ACTS_STATS_FULL.format(uid)
         else:
-            filename = ACTS_STATS_PART
+            filename = ACTS_STATS_PART.format(uid)
         with open(cd.software_folder + filename, 'rb') as f:
             acts_app = pickle.load(f)
     except Exception as ex:
@@ -241,17 +252,17 @@ def extract_statistics_cached(full=False, categories=None):
 
     return app_stats, acts_app
 
-def select_top_k_apps(top_k, acts_app, sorting):
+def select_top_k_apps(top_k, acts_app, sorting, sort_mode=DEFAULT_SORTING):
     top_k_apps = {}        
     for i in range(len(var.activities)):
         k = 0
         # debug(acts_app[i])
         # debug(sorted(acts_app[i].items(), key=lambda value: value[1]['f'], reverse=True))
-        (sort, desc) = sorting[SORTING]
+        (sort, desc) = sorting[sort_mode]
         ### Sorting based on sorting schemes
         top = []
         for app_id, value in sorted(acts_app[i].items(), key=sort, reverse=desc):
-            if k >= TOP_K:
+            if k >= top_k:
                 break
             top.append((app_id, value))
             k += 1
@@ -291,6 +302,7 @@ def init_app_category():
 def init_sorting_schemes():
     sorting = {}
     ### Sorting mechanism, reverse (descending order) status [True/False]
+    sorting['erf']  = (lambda value: (1-value[1]['e'])*sqrt(value[1]['f']), True)
     sorting['ef']   = (lambda value: (1-value[1]['e'])*value[1]['f'], True)
     sorting['f']    = (lambda value: value[1]['f'], True)
     sorting['e']    = (lambda value: value[1]['e'], False)
@@ -302,7 +314,9 @@ Generating dataset from raw file for the first time
 def transform_dataset(user_ids, app_names, write=False, full=False, categories=None, app_cat=None, cached=False):
     ### Cached
     if cached:
-        return read_dataset_from_file(full=full, categories=categories)
+        users_data = read_dataset_from_file(full=full, categories=categories)
+        if users_data is not None:
+            return users_data
     ### If not cached
     remove_digits = str.maketrans('', '', digits)
     users_data = {}
@@ -313,6 +327,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
         agg_filename = SOFT_FULL_FORMAT.format(cd.software_folder, 'ALL')
     else:
         agg_filename = SOFT_PART_FORMAT.format(cd.software_folder, 'ALL')
+    remove_file_if_exists(agg_filename)
     for uid in user_ids:
         ctr_uid += 1
         lines = []
@@ -368,6 +383,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                         lines.append(text)
                         ### label is put in the first column
                         data = []
+                        data.append(uid)
                         data.append(act_int)
                         data.extend(app_dist)
                         user_data.append(data)
@@ -389,7 +405,6 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                 remove_file_if_exists(filename)
                 write_to_file_buffered(filename, lines, buffer_size=1000)
                 ### Write to aggregated file
-                remove_file_if_exists(agg_filename)
                 write_to_file_buffered(agg_filename, lines, buffer_size=1000)
                 del lines[:]
     debug('Started writing all app and users data into binary files', out_file=True)
@@ -431,8 +446,12 @@ def read_dataset_from_file(full=False, categories=None):
 Generating all apps names from raw file for the first time
 """
 def get_all_apps(user_ids, stop_words, write=False, split=True, cached=False):
+    ### Cached
     if cached:
-        return get_all_apps_buffered(stop_words, full=not split)
+        app_names = get_all_apps_buffered(stop_words, full=not split)
+        if len(app_names) > 0:
+            return app_names
+    ### If not cached
     remove_digits = str.maketrans('', '', digits)
     app_names = defaultdict(int)
     debug('Starting get all app names')
@@ -467,7 +486,7 @@ def get_all_apps(user_ids, stop_words, write=False, split=True, cached=False):
         for k, v in app_names.items():
             texts.append('{},{}'.format(k,v))
         write_to_file_buffered(filename, texts)
-    return app_names
+    return app_names.keys()
 
 """
 Generating all apps names from cached file (after the first time)
@@ -478,15 +497,18 @@ def get_all_apps_buffered(stop_words, full=False):
     else:
         filename = cd.software_folder + APP_FULL_NAMES
     app_names = []
-    with open(filename) as fr:
-        for line in fr:
-            split = line.strip().split(',')
-            try:
-                f = int(split[1])
-                if f > APP_F_THRESHOLD:
-                    app_names.append(split[0])
-            except:
-                pass
+    try:
+        with open(filename) as fr:
+            for line in fr:
+                split = line.strip().split(',')
+                try:
+                    f = int(split[1])
+                    if f > APP_F_THRESHOLD:
+                        app_names.append(split[0])
+                except:
+                    pass
+    except Exception as ex:
+        debug(ex, get_function_name())
     return app_names
 
 ### label is put in the first column
@@ -496,7 +518,7 @@ def testing(dataset, uid, cached=True, mode='Default'):
     clfs = classifier_list()
     # print(dataset.shape)
     ncol = dataset.shape[1]
-    X = dataset[:,1:ncol] # Remove index 0 (activities)
+    X = dataset[:,2:ncol] # Remove index 0 (uid) and index 1 (activities)
     y = dataset[:,0]
     texts = []
     info = {}
@@ -506,8 +528,9 @@ def testing(dataset, uid, cached=True, mode='Default'):
         info['clf_name'] = name
         output = evaluation(X, y, clf, info=info, cached=cached, mode=mode)
         acc = output['acc']
-        time = output['time']
-        text = '{},{},{},{}'.format(uid, name, acc, time)
+        time_train = output['time_train']
+        time_test = output['time_test']
+        text = '{},{},{},{},{}'.format(uid, name, acc, time_train, time_test)
         texts.append(text)
     return texts
 
@@ -556,55 +579,85 @@ def generate_testing_report_agg(users_data, clear_data=False):
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
-    full_app_name = True
+    MODE = [
+        'Full', 'Part', 'Cat'
+    ]  ## 'Full', 'Part', 'Cat'
 
+    TOP_K = 10
+    SORT_MODE = 'erf'
+
+    ### Init sorting mechanism
+    sorting = init_sorting_schemes()
     ### Init user ids
     user_ids  = init()
 
     ### Stop words for specific app names
     stop_words = init_stop_words(STOP_FILENAME)
 
-    ### Apps categories
-    categories = None
-    app_cat = None
-    categories = init_categories()
-    app_cat = init_app_category()
+    for mode in MODE:
+        if mode == 'Full' or mode == 'Cat':
+            full_app_name = True
+        else:
+            full_app_name = False
 
-    ### Transform original input into training and testing dataset
-    app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name, cached=True) ## Only for 1st time (dict)
-    debug('len(app_names): {}'.format(len(app_names)))
+        ### Apps categories
+        categories = None
+        app_cat = None
+        if mode == 'Cat':
+            categories = init_categories()
+            app_cat = init_app_category()
 
-    ### Read dataset for the experiments
-    users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=False)   ## Only for 1st time (dict)
-    debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+        ### Transform original input into training and testing dataset
+        app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name, cached=True) ## Only for 1st time (dict)
+        debug('len(app_names): {}'.format(len(app_names)))
 
-    ### Generate testing report using machine learning evaluation
-    # generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories)
-    # generate_testing_report_agg(users_data, clear_data=False)
+        ### Read dataset for the experiments
+        users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=False)   ## Only for 1st time (dict)
+        debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
-    ## ToDo !!: From the users_data --> generate activity X apps vector which shows the score of each apps regarding its {frequency, entropy, entropy-frequency, other}
-    # A = [0, 1, 2, 5]
-    # B = [1, 0, 1, 0]
-    # C = list(map(operator.add, A, B))
-    # debug(A)
-    # debug(B)
-    # debug(C)
+        ### Generate testing report using machine learning evaluation
+        # generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories)
+        # generate_testing_report_agg(users_data, clear_data=False)
 
-    ### Init sorting mechanism
-    # sorting = init_sorting_schemes()
-    ### Extract statistics
-    # app_stats, acts_app = extract_statistics(user_ids, stop_words, full=full_app_name, categories=categories, app_cat=app_cat, cached=True)
-    # debug(app_stats)
-    # debug()
-    # debug(acts_app)
-    # top_k_apps = select_top_k_apps(TOP_K, acts_app, sorting)
-    # for i in range(len(var.activities)):
-    #     debug(var.activities[i], clean=True)
-    #     top = top_k_apps[i]
-    #     for app_id, value in top:
-    #         debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
-    #     print()
+        ### Extract statistics
+        # uids = {}
+        # uids['ALL'] = user_ids
+        # for uid in user_ids:
+        #     uids[uid] = [uid]
+        # for uid, arr in uids.items():
+        #     app_stats, acts_app = extract_statistics(arr, stop_words, uid, full=full_app_name, categories=categories, app_cat=app_cat, cached=True)
+        #     debug(uid, clean=True)
+        #     # debug(app_stats)
+        #     # debug()
+            # debug(acts_app)
+            # top_k_apps = select_top_k_apps(TOP_K, acts_app, sorting, SORT_MODE)
+            # if categories is not None:
+            #     filename = SOFT_CATEGORY_FORMAT.format(cd.software_folder, uid)
+            # elif full:
+            #     filename = SOFT_FULL_FORMAT.format(cd.software_folder, uid)
+            # else:
+            #     filename = SOFT_PART_FORMAT.format(cd.software_folder, uid)
+            # dataset = np.genfromtxt(filename, delimiter=',')
+            # debug(dataset.shape)
+            # ncol = dataset.shape[1]
+            # X = dataset[:,2:ncol] # Remove index 0 (uid) and index 1 (activities)
+            # y = dataset[:,0]
+            # soft_evaluation(X, y, top_k_apps, WEIGHTING)
+            # for i in range(len(var.activities)):
+            #     debug(var.activities[i], clean=True)
+            #     top = top_k_apps[i]
+            #     for app_id, value in top:
+            #         debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
+            #     print()
 
     ### Create a tuple for software view model by transforming raw data
     ### {frequency, entropy, entropy_frequency}
     debug('--- Program Finished ---', out_file=True)
+
+### Reference
+# A = [0, 1, 2, 5]
+# B = [1, 0, 1, 0]
+# C = list(map(operator.add, A, B))
+# debug(A)
+# debug(B)
+# debug(C)
