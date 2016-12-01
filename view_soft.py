@@ -7,12 +7,6 @@ Version 1.0.11
 ## ToDo !!: From the users_data --> generate activity X apps vector which shows the score of each apps regarding its {frequency, entropy, entropy-frequency, other}
 """
 
-- Fixed bug on cached is True, when the file is not available
-- Added uid parameter in apps stats and acts stats
-- Added testing time in evaluation
-- Added new sorting method (erf) : entropy and sqrt of frequency
-- Added uid in the dataset
-- Added loop in the main function for various mode
 """
 import getopt
 import sys
@@ -519,7 +513,7 @@ def testing(dataset, uid, cached=True, mode='Default'):
     # print(dataset.shape)
     ncol = dataset.shape[1]
     X = dataset[:,2:ncol] # Remove index 0 (uid) and index 1 (activities)
-    y = dataset[:,0]
+    y = dataset[:,1]
     texts = []
     info = {}
     info['uid'] = uid
@@ -612,11 +606,11 @@ if __name__ == '__main__':
         debug('len(app_names): {}'.format(len(app_names)))
 
         ### Read dataset for the experiments
-        users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=False)   ## Only for 1st time (dict)
+        users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=True)   ## Only for 1st time (dict)
         debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
         ### Generate testing report using machine learning evaluation
-        # generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories)
+        generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories)
         # generate_testing_report_agg(users_data, clear_data=False)
 
         ### Extract statistics
