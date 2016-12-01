@@ -2,7 +2,15 @@
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
 Version 1.0.9
-2016/11/29 11:24AM
+2016/12/01 11:24AM
+"""
+"""
+Modified some parameters in dataset generation
+- Categories parameter
+- Fullname parameter
+- Removed all data
+- Removed "is True" in all codes
+- Transform app name to lower case
 """
 import getopt
 import sys
@@ -21,19 +29,34 @@ from collections import defaultdict
 
 from general import *
 from evaluation import *
+from helper import *
 
-SOFT_FORMAT     = '{}/{}_soft.csv'
-STOP_FILENAME   = 'stop_app.txt'
-APP_NAMES       = 'app_names.csv'
-APP_FULL_NAMES  = 'app_names_fullname.csv'
-ALL_APP_NAME    = 'all_app.bin'
-USERS_DATA_NAME = 'users_data.bin'
-APP_F_THRESHOLD = 1000
-TOP_K           = 5
-WEIGHTING       = 'g'   ### ef: entropy frequency, f: frequency, e: entropy, g: general (unweighted)
-SORTING         = 'ef'  ### ef: entropy frequency, f: frequency, e: entropy
+APP_PART_NAMES          = 'app_names_part.csv'
+APP_FULL_NAMES          = 'app_names_full.csv'
+CATEGORY_NAME           = 'category_lookup.csv'
+APP_CATEGORY            = 'app_category.csv'
+STOP_FILENAME           = 'stop_app.txt'
 
-COLUMN_NAMES    = 'UID,Classifier,Accuracy,Time(s)'
+SOFT_FORMAT             = '{}/{}_soft.csv'          ## Original app data
+SOFT_PART_FORMAT        = '{}/{}_soft_part.csv'     ## Processed: part name
+SOFT_FULL_FORMAT        = '{}/{}_soft_full.csv'     ## Processed: full name
+SOFT_CATEGORY_FORMAT    = '{}/{}_soft_cat.csv'      ## Processed: category
+
+ALL_APP_NAME            = 'all_app.bin'
+ALL_APP_CAT_NAME        = 'all_app_cat.bin'
+
+USERS_DATA_PART_NAME    = 'users_part_data.bin'
+USERS_DATA_FULL_NAME    = 'users_full_data.bin'
+USERS_DATA_CAT_NAME     = 'users_cat_data.bin'
+
+APP_F_THRESHOLD         = 1000
+TIME_WINDOW             = 1000  ## in ms
+
+TOP_K                   = 5
+WEIGHTING               = 'g'   ### ef: entropy frequency, f: frequency, e: entropy, g: general (unweighted)
+SORTING                 = 'ef'  ### ef: entropy frequency, f: frequency, e: entropy
+
+COLUMN_NAMES            = 'UID,Classifier,Accuracy,Time(s)'
 
 def read_soft_file_agg(dataset_folder, user_ids):
     apps_agg = []
@@ -154,6 +177,29 @@ def init_stop_words(stop_app_filename):
             stop_words.append(line.strip())
     return stop_words
 
+def init_categories():
+    filename = cd.software_folder + CATEGORY_NAME
+    categories = {}
+    with open(filename) as f:
+        for line in f:
+            split = line.strip().split(',')
+            cat_name = split[0]
+            cat_id = int(split[1])
+            categories[cat_id] = cat_name
+    return categories
+
+def init_app_category():
+    filename = cd.software_folder + APP_CATEGORY
+    app_cat = {}
+    with open(filename) as f:
+        for line in f:
+            split = line.strip().split(',')
+            app_name = split[0]
+            cat_id = int(split[1])
+            cat_name = split[2]
+            app_cat[app_name] = cat_id
+    return app_cat
+
 def init_sorting_schemes():
     sorting = {}
     ### Sorting mechanism, reverse (descending order) status [True/False]
@@ -165,10 +211,9 @@ def init_sorting_schemes():
 """
 Generating dataset from raw file for the first time
 """
-def transform_dataset(user_ids, app_names, write=False, category=None):
+def transform_dataset(user_ids, app_names, write=False, full=False, categories=None, app_cat=None):
     remove_digits = str.maketrans('', '', digits)
     all_lines = []
-    all_data  = []
     users_data = {}
     ctr_uid = 0
     for uid in user_ids:
@@ -182,37 +227,53 @@ def transform_dataset(user_ids, app_names, write=False, category=None):
             debug('Transforming : {} [{}/{}]'.format(filename, ctr_uid, len(user_ids)), callerid=get_function_name(), out_file=True)
             previous_time = 0
             for line in fr:
-                split = line.strip().split(',')
+                split = line.lower().strip().split(',')
                 uid = int(split[0])
                 act = split[1]
                 app = split[2]
                 time = int(split[3])    # in ms
-                act_int = activity_to_int(act, activities)
+                act_int = activity_to_int(act, var.activities)
                 # print(act_int)
                 date = datetime.fromtimestamp(time / 1e3)
-                app_split = app.translate(remove_digits).replace(':','.').split('.')
                 if time != previous_time:
                     app_dist = []
-                for i in range(len(app_names)):
-                    app_dist.append(0)
-                for app_id in app_split:
-                    try:
-                        idx = app_names.index(app_id)
-                        if idx != -1:
-                            app_dist[idx] = 1
-                    except:
-                        ### Because some app names are deleted to save resources
-                        pass
+                if categories is None:
+                    for i in range(len(app_names)):
+                        app_dist.append(0)
+                    if not full:
+                        app_split = app.translate(remove_digits).replace(':','.').split('.')
+                        for app_id in app_split:
+                            try:
+                                idx = app_names.index(app_id)
+                                if idx != -1:
+                                    app_dist[idx] += 1
+                            except:
+                                ### Because some app names are deleted to save resources
+                                pass
+                    else:
+                        try:
+                            idx = app_names.index(app)
+                            if idx != -1:
+                                app_dist[idx] += 1
+                        except:
+                            ### Because some app names are deleted to save resources
+                            pass
+                else:
+                    for i in range(len(categories)):
+                        app_dist.append(0)
+                    cat = app_cat.get(app.strip())
+                    if cat is not None:
+                        app_dist[cat-1] += 1
                 if time != previous_time:
-                    soft = (','.join(str(x) for x in app_dist))
-                    text = soft + ',' + str(act_int)
-                    lines.append(text)
-                    ### label is put in the first column
-                    data = []
-                    data.append(act_int)
-                    data.extend(app_dist)
-                    all_data.append(data)
-                    user_data.append(data)
+                    if sum(app_dist) > 0:
+                        soft = (','.join(str(x) for x in app_dist))
+                        text = soft + ',' + str(act_int)
+                        lines.append(text)
+                        ### label is put in the first column
+                        data = []
+                        data.append(act_int)
+                        data.extend(app_dist)
+                        user_data.append(data)
                     ### Finally update the previous time to match current time
                     previous_time = time
                 ctr += 1
@@ -220,42 +281,52 @@ def transform_dataset(user_ids, app_names, write=False, category=None):
                     debug('Processing {:,} lines'.format(ctr), out_file=True)
             debug('len(texts): {}'.format(len(lines)))
             debug('len(file) : {}'.format(ctr))
-            if write is True:
-                filename = SOFT_FORMAT.format(cd.working_folder, uid)
+            if write:
+                if categories is None:
+                    if full:
+                        filename = SOFT_FULL_FORMAT.format(cd.software_folder, uid)
+                    else:
+                        filename = SOFT_PART_FORMAT.format(cd.software_folder, uid)
+                else:
+                    filename = SOFT_CATEGORY_FORMAT.format(cd.software_folder, uid)                    
                 remove_file_if_exists(filename)
                 write_to_file_buffered(filename, lines, buffer_size=1000)
                 del lines[:]
         all_lines.extend(lines)
     debug('Started writing all app and users data into binary files', out_file=True)
-    if write is True:
-        with open(cd.working_folder + ALL_APP_NAME, 'wb') as f:
-            pickle.dump(all_data, f)
-        with open(cd.working_folder + USERS_DATA_NAME, 'wb') as f:
+    if write:
+        if categories is None:
+            if full:
+                filename = USERS_DATA_FULL_NAME
+            else:
+                filename = USERS_DATA_PART_NAME
+        else:
+            filename = USERS_DATA_CAT_NAME
+        with open(cd.software_folder + filename, 'wb') as f:
             pickle.dump(users_data, f)
     debug('Finished writing all app and users data into binary files', out_file=True)
-    return all_lines, all_data, users_data
+    return all_lines, users_data
 
 """
 Generating dataset from cached file (after the first time)
 """
-def read_dataset_from_file(read_all=True, read_users=True):
+def read_dataset_from_file(full=False, categories=None):
     debug('Started reading dataset from file')
-    all_data = []
     users_data = {}
-    if read_all:
-        try:
-            with open(cd.working_folder + ALL_APP_NAME, 'rb') as f:
-                all_data = pickle.load(f)
-        except:
-            pass
-    if read_users:
-        try:
-            with open(cd.working_folder + USERS_DATA_NAME, 'rb') as f:
-                users_data = pickle.load(f)
-        except:
-            pass
-        debug('Finished reading dataset from file')
-    return all_data, users_data
+    if categories is None:
+        if full:
+            filename = USERS_DATA_FULL_NAME
+        else:
+            filename = USERS_DATA_PART_NAME
+    else:
+        filename = USERS_DATA_CAT_NAME
+    try:
+        with open(cd.software_folder + filename, 'rb') as f:
+            users_data = pickle.load(f)
+    except:
+        pass
+    debug('Finished reading dataset from file')
+    return users_data
 
 """
 Generating all apps names from raw file for the first time
@@ -270,9 +341,9 @@ def get_all_apps(user_ids, stop_words, write=False, split=True):
             with open(filename) as fr:
                 debug(filename, callerid=get_function_name())
                 for line in fr:
-                    split = line.strip().split(',')
+                    split = line.lower().strip().split(',')
                     app = split[2]
-                    if split is True:
+                    if split:
                         app_split = app.translate(remove_digits).replace(':','.').split('.')
                         for app_id in app_split:
                             app_names[app_id] += 1
@@ -285,8 +356,11 @@ def get_all_apps(user_ids, stop_words, write=False, split=True):
     for app in stop_words:
         app_names.pop(app, None)
     debug('Finished get all app names')
-    if write is True:
-        filename = cd.working_folder + APP_NAMES
+    if write:
+        if split:
+            filename = cd.software_folder + APP_PART_NAMES
+        else:
+            filename = cd.software_folder + APP_FULL_NAMES
         remove_file_if_exists(filename)
         texts = []
         for k, v in app_names.items():
@@ -299,9 +373,9 @@ Generating all apps names from cached file (after the first time)
 """
 def get_all_apps_buffered(stop_words, full=False):
     if full is False:
-        filename = cd.working_folder + APP_NAMES
+        filename = cd.software_folder + APP_PART_NAMES
     else:
-        filename = cd.working_folder + APP_FULL_NAMES
+        filename = cd.software_folder + APP_FULL_NAMES
     app_names = []
     with open(filename) as fr:
         for line in fr:
@@ -351,7 +425,7 @@ def generate_testing_report_single(users_data, user_ids, clear_data=False):
             continue
         result = testing(data, uid, cached=False)
         output.extend(result)
-    if clear_data is True:
+    if clear_data:
         try:
             users_data.clear()
         except Exception as ex:
@@ -362,39 +436,39 @@ def generate_testing_report_single(users_data, user_ids, clear_data=False):
     # debug(output)
 
 ### Generating testing report for all users
-def generate_testing_report_agg(all_data, clear_data=False):
+def generate_testing_report_agg(users_data, clear_data=False):
     debug('Evaluating application data (single)', out_file=True)
-    debug('#Rows: {}'.format(len(all_data)), out_file=True)
-    output = []
-    output.append(COLUMN_NAMES)
-    output.extend(testing(all_data, 'ALL'))
-    if clear_data is True:
-        try:
-            del all_data[:]
-            del all_data
-        except Exception as ex:
-            debug(ex)
-    filename = '{}soft_report_agg_{}.csv'.format(cd.report_folder, date.today())
-    remove_file_if_exists(filename)
-    write_to_file_buffered(filename, output)
-    # debug(output)
+    pass
 
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
+    full_app_name = True
+
+    ### Init user ids
     user_ids  = init()
+
     ### Stop words for specific app names
     stop_words = init_stop_words(STOP_FILENAME)
+
+    ### Apps categories
+    categories = init_categories()
+    app_cat = init_app_category()
+
     ### Transform original input into training and testing dataset
-    app_names = get_all_apps_buffered(stop_words, full=False)
+    # app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name) ## Only for 1st time
+    app_names = get_all_apps_buffered(stop_words, full=full_app_name)
     debug('len(app_names): {}'.format(len(app_names)))
+
     ### Read dataset for the experiments
-    all_data, users_data = read_dataset_from_file(read_all=False, read_users=True)
+    # transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat)   ## Only for 1st time
+    users_data = read_dataset_from_file(full=full_app_name, categories=categories)
     debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+
     ### Generate testing report using machine learning evaluation
     # generate_testing_report_single(users_data, user_ids, clear_data=True)
-    # generate_testing_report_agg(all_data, clear_data=False)
+    # generate_testing_report_agg(users_data, clear_data=False)
 
     # ### Test
     # debug('Evaluating application data')
@@ -417,7 +491,7 @@ if __name__ == '__main__':
     #     del all_data
     # except Exception as ex:
     #     debug(ex)
-    # filename = '{}soft_report_{}.csv'.format(cd.working_folder, date.today())
+    # filename = '{}soft_report_{}.csv'.format(cd.software_folder, date.today())
     # remove_file_if_exists(filename)
     # write_to_file_buffered(filename, output)
     # debug(output)
