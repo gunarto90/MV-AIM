@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.3
-2016/11/28 09:47AM
+Version 1.0.4
+2016/12/01 01.30PM
 """
 import os
 import math
@@ -16,16 +16,6 @@ import config_directory as cd
 import config_variable as var
 
 IS_DEBUG = True
-
-def init(file='users.json'):
-    user_ids = None
-    try:
-        with open(file) as data_file:
-            load = json.load(data_file)
-            user_ids = load['users']
-    except Exception as ex:
-        debug(ex, callerid='init - json')
-    return user_ids
 
 def get_function_name():
     return inspect.stack()[1][3]
@@ -108,6 +98,7 @@ def activity_to_int(act, activities):
         if a == act:
             return idx
         idx += 1
+    debug(act, get_function_name())
     return -1
 
 def entropy(data, basis=2):
@@ -139,3 +130,25 @@ def haversine(lat1, lon1, lat2, lon2):
     km = 6367 * c
     distance = km * 1000
     return distance # in meter
+
+def init(file='users.json'):
+    ### Init user ids
+    user_ids = None
+    try:
+        with open(file) as data_file:
+            load = json.load(data_file)
+            user_ids = load['users']
+    except Exception as ex:
+        debug(ex, callerid='init - json')
+    ### Init directories
+    make_sure_path_exists(cd.working_folder)
+
+    make_sure_path_exists(cd.log_folder)
+    make_sure_path_exists(cd.model_folder)
+    make_sure_path_exists(cd.report_folder)
+
+    make_sure_path_exists(cd.software_folder)
+    make_sure_path_exists(cd.spatial_folder)
+    make_sure_path_exists(cd.temporal_folder)
+    ### Return user ids
+    return user_ids
