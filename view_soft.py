@@ -2,7 +2,7 @@
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
 Version 1.0.11
-2016/12/01 10:22PM
+2016/12/06 05:10PM
 """
 ## ToDo !!: From the users_data --> generate activity X apps vector which shows the score of each apps regarding its {frequency, entropy, entropy-frequency, other}
 """
@@ -54,6 +54,10 @@ USERS_DATA_CAT_NAME     = 'users_cat_data.bin'
 REPORT_PART_NAME        = '{}/soft_report_part_{}.csv'
 REPORT_FULL_NAME        = '{}/soft_report_full_{}.csv'
 REPORT_CAT_NAME         = '{}/soft_report_cat_{}.csv'
+
+REPORT_TOD_NAME         = '{}/soft_report_tod_{}_{}.csv'
+REPORT_DOW_NAME         = '{}/soft_report_dow_{}_{}.csv'
+REPORT_TOW_NAME         = '{}/soft_report_tow_{}_{}.csv'
 
 APP_F_THRESHOLD         = 1000  ## Minimum occurrence of the app throughout the dataset
 TIME_WINDOW             = 1000  ## in ms
@@ -331,6 +335,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
         ctr = 0
         with open(filename) as fr:
             debug('Transforming : {} [{}/{}]'.format(filename, ctr_uid, len(user_ids)), callerid=get_function_name(), out_file=True)
+            time = 0
             previous_time = 0
             for line in fr:
                 split = line.lower().strip().split(',')
@@ -378,6 +383,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                         ### label is put in the first column
                         data = []
                         data.append(uid)
+                        data.append(time)
                         data.append(act_int)
                         data.extend(app_dist)
                         user_data.append(data)
@@ -386,6 +392,18 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                 ctr += 1
                 if ctr % 100000 == 0:
                     debug('Processing {:,} lines'.format(ctr), out_file=True)
+            ### Last app distribution
+            if sum(app_dist) > 0:
+                soft = (','.join(str(x) for x in app_dist))
+                text = '{},{},{}'.format(uid, act_int, soft)
+                lines.append(text)
+                ### label is put in the first column
+                data = []
+                data.append(uid)
+                data.append(time)
+                data.append(act_int)
+                data.extend(app_dist)
+                user_data.append(data)
             debug('len(texts): {}'.format(len(lines)))
             debug('len(file) : {}'.format(ctr))
             if write:
@@ -512,7 +530,7 @@ def testing(dataset, uid, cached=True, mode='Default'):
     clfs = classifier_list()
     # print(dataset.shape)
     ncol = dataset.shape[1]
-    X = dataset[:,2:ncol] # Remove index 0 (uid) and index 1 (activities)
+    X = dataset[:,3:ncol] # Remove index 0 (uid), index 1 (activities), and index 2 (time)
     y = dataset[:,1]
     texts = []
     info = {}
@@ -569,12 +587,140 @@ def generate_testing_report_agg(users_data, clear_data=False):
     debug('Evaluating application data (agg)', out_file=True)
     pass
 
+def extract_time_data(user_ids, mode, app_cat=None, cached=False):
+    ctr_uid = 0
+    global_timeline = {}
+    personal_timeline = {}
+    global_filename = 'global_app_{}.bin'.format(mode)
+    remove_digits = str.maketrans('', '', digits)
+    if not cached:
+        for uid in user_ids:
+            ctr_uid += 1
+            with open(SOFT_FORMAT.format(cd.dataset_folder, uid)) as f:
+                debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(user_ids)))
+                for line in f:
+                    split = line.lower().strip().split(',')
+                    act = split[1]
+                    app = split[2]
+                    time = int(split[3])    # in ms
+                    if mode.lower() == 'full':
+                        data = [app]
+                    elif mode.lower() == 'part':
+                        data = app.translate(remove_digits).replace(':','.').split('.')
+                    elif mode.lower() == 'cat':
+                        cat = app_cat.get(app.strip())
+                        if cat is not None:
+                            data = [cat]
+                    ### Global app records
+                    for app in data:
+                        found = global_timeline.get(app)
+                        if found is None:
+                            found = []
+                        found.append(time)
+                        global_timeline[app] = found
+                        ### Personal app records
+                        found = personal_timeline.get(uid)
+                        if found is None:
+                            found = {}
+                        personal_timeline[uid] = found
+                        found2 = found.get(app)
+                        if found2 is None:
+                            found2 = []
+                        found2.append(time)
+                        found[app] = found2
+        debug('Writing to file : {}'.format(global_filename))
+        with open(cd.software_folder + global_filename, 'wb') as f:
+            pickle.dump(global_timeline, f)
+        for uid, data in personal_timeline.items():
+            personal_filename = 'personal_app_{}_{}.bin'.format(mode, uid)
+            debug('Writing to file : {}'.format(personal_filename))
+            with open(cd.software_folder + personal_filename, 'wb') as f:
+                pickle.dump(data, f)
+    else:
+        try:
+            with open(cd.software_folder + global_filename, 'rb') as f:
+                global_timeline = pickle.load(f)
+            for uid in user_ids:
+                personal_filename = 'personal_app_{}_{}.bin'.format(mode, uid)
+                with open(cd.software_folder + personal_filename, 'rb') as f:
+                    personal_timeline[uid] = pickle.load(f)
+        except:
+            extract_time_data(user_ids, mode, app_cat, cached=False)
+    return global_timeline, personal_timeline
+
+def time_slots_extraction(timeline):
+    time_of_day     = {} ### 24 hour time slots
+    day_of_week     = {} ### 7 day time slots
+    time_of_week    = {} ### 24H x 7D time slots
+    for app, data in timeline.items():
+        ### Init data
+        tod = []
+        for i in range(24):
+            tod.append(0)
+        dow = []
+        for i in range(7):
+            dow.append(0)
+        tow = []
+        for i in range(7*24):
+            tow.append(0)
+        time_of_day[app] = tod
+        day_of_week[app] = dow
+        time_of_week[app] = tow
+        ###
+        data = sorted(data)
+        duration = data[len(data)-1] - data[0]
+        ### Threshold is N hour
+        if float(duration) / var.MILI / var.HOUR > 1.0:
+            debug('{} : {}'.format(app, duration))
+        for time in data:
+            date = datetime.fromtimestamp(time / 1e3)
+            day = date.weekday()
+            hour = date.hour
+            timeweek = day*24 + hour
+            time_of_day[app][hour] += 1
+            day_of_week[app][day] += 1
+            time_of_week[app][timeweek] += 1
+    return time_of_day, day_of_week, time_of_week
+
+def timeline_report(mode, uid, categories=None, time_of_day=None, day_of_week=None, time_of_week=None):
+    texts = []
+    if time_of_day is not None:
+        for app, arr in time_of_day.items():
+            if mode.lower() == 'cat':
+                text = '{},{}'.format(categories[app], (','.join(str(x) for x in arr)))
+            else:
+                text = '{},{}'.format(app, (','.join(str(x) for x in arr)))
+            texts.append(text)
+        write_to_file_buffered(REPORT_TOD_NAME.format(cd.report_folder, mode, uid), texts)
+        del texts[:]
+    if day_of_week is not None:
+        for app, arr in day_of_week.items():
+            if mode.lower() == 'cat':
+                text = '{},{}'.format(categories[app], (','.join(str(x) for x in arr)))
+            else:
+                text = '{},{}'.format(app, (','.join(str(x) for x in arr)))
+            texts.append(text)
+        write_to_file_buffered(REPORT_DOW_NAME.format(cd.report_folder, mode, uid), texts)
+        del texts[:]
+    if time_of_week is not None:
+        for app, arr in time_of_week.items():
+            if mode.lower() == 'cat':
+                text = '{},{}'.format(categories[app], (','.join(str(x) for x in arr)))
+            else:
+                text = '{},{}'.format(app, (','.join(str(x) for x in arr)))
+            texts.append(text)
+        write_to_file_buffered(REPORT_TOW_NAME.format(cd.report_folder, mode, uid), texts)
+        del texts[:]
+
+def obj_dict(obj):
+    return obj.__dict__
+
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     MODE = [
-        'Full', 'Part', 'Cat'
+        'Cat'
     ]  ## 'Full', 'Part', 'Cat'
 
     TOP_K = 10
@@ -589,7 +735,8 @@ if __name__ == '__main__':
     stop_words = init_stop_words(STOP_FILENAME)
 
     for mode in MODE:
-        if mode == 'Full' or mode == 'Cat':
+        debug('Mode is : {}'.format(mode))
+        if mode.lower() == 'full' or mode.lower() == 'cat':
             full_app_name = True
         else:
             full_app_name = False
@@ -597,21 +744,31 @@ if __name__ == '__main__':
         ### Apps categories
         categories = None
         app_cat = None
-        if mode == 'Cat':
+        if mode.lower() == 'cat':
             categories = init_categories()
             app_cat = init_app_category()
 
         ### Transform original input into training and testing dataset
-        app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name, cached=True) ## Only for 1st time (dict)
+        app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name, cached=True)
         debug('len(app_names): {}'.format(len(app_names)))
 
         ### Read dataset for the experiments
-        users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=True)   ## Only for 1st time (dict)
-        debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+        # users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=False)
+        # debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
         ### Generate testing report using machine learning evaluation
-        generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories)
+        # generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories)
         # generate_testing_report_agg(users_data, clear_data=False)
+
+        ### Extract time of each apps
+        global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
+        ### Global timeline
+        time_of_day, day_of_week, time_of_week = time_slots_extraction(global_timeline)
+        timeline_report(mode, 'GLOBAL', categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
+        ### Personal timeline
+        for uid in user_ids:
+            time_of_day, day_of_week, time_of_week = time_slots_extraction(personal_timeline[uid])
+            timeline_report(mode, uid, categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
 
         ### Extract statistics
         # uids = {}
