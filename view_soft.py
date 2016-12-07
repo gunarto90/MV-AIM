@@ -2,9 +2,15 @@
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
 Version 1.0.11
-2016/12/06 05:10PM
+2016/12/07 08:07PM
 """
-## ToDo !!: From the users_data --> generate activity X apps vector which shows the score of each apps regarding its {frequency, entropy, entropy-frequency, other}
+
+"""
+## ToDo !!:
+- From the users_data --> generate activity X apps vector which shows the score of each apps regarding its {frequency, entropy, entropy-frequency, other}
+- Top-k apps for the classifier
+"""
+
 """
 
 """
@@ -392,18 +398,6 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                 ctr += 1
                 if ctr % 100000 == 0:
                     debug('Processing {:,} lines'.format(ctr), out_file=True)
-            ### Last app distribution
-            if sum(app_dist) > 0:
-                soft = (','.join(str(x) for x in app_dist))
-                text = '{},{},{}'.format(uid, act_int, soft)
-                lines.append(text)
-                ### label is put in the first column
-                data = []
-                data.append(uid)
-                data.append(time)
-                data.append(act_int)
-                data.extend(app_dist)
-                user_data.append(data)
             debug('len(texts): {}'.format(len(lines)))
             debug('len(file) : {}'.format(ctr))
             if write:
@@ -528,23 +522,28 @@ def testing(dataset, uid, cached=True, mode='Default'):
     debug('Processing: {}'.format(uid))
     dataset = np.array(dataset)
     clfs = classifier_list()
-    # print(dataset.shape)
-    ncol = dataset.shape[1]
-    X = dataset[:,3:ncol] # Remove index 0 (uid), index 1 (activities), and index 2 (time)
-    y = dataset[:,1]
-    texts = []
-    info = {}
-    info['uid'] = uid
-    for name, clf in clfs.items():
-        debug(name)
-        info['clf_name'] = name
-        output = evaluation(X, y, clf, info=info, cached=cached, mode=mode)
-        acc = output['acc']
-        time_train = output['time_train']
-        time_test = output['time_test']
-        text = '{},{},{},{},{}'.format(uid, name, acc, time_train, time_test)
-        texts.append(text)
-    return texts
+    try:
+        # debug(dataset.shape)
+        # debug(dataset[0])
+        ncol = dataset.shape[1]
+        X = dataset[:,3:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
+        y = dataset[:,2]
+        texts = []
+        info = {}
+        info['uid'] = uid
+        for name, clf in clfs.items():
+            debug(name)
+            info['clf_name'] = name
+            output = evaluation(X, y, clf, info=info, cached=cached, mode=mode)
+            acc = output['acc']
+            time_train = output['time_train']
+            time_test = output['time_test']
+            text = '{},{},{},{},{}'.format(uid, name, acc, time_train, time_test)
+            texts.append(text)
+        return texts
+    except Exception as ex:
+        debug('Error on testing', ex)
+        return None
 
 ### Generating testing report per user
 def generate_testing_report_single(users_data, user_ids, clear_data=False, full=False, categories=None):
@@ -565,8 +564,10 @@ def generate_testing_report_single(users_data, user_ids, clear_data=False, full=
         debug('#Rows: {}'.format(len(data)), out_file=True)
         if uid not in user_ids:
             continue
+        # debug(data)
         result = testing(data, uid, cached=False, mode=mode)
-        output.extend(result)
+        if result is not None:
+            output.extend(result)
     if clear_data:
         try:
             users_data.clear()
@@ -603,6 +604,7 @@ def extract_time_data(user_ids, mode, app_cat=None, cached=False):
                     act = split[1]
                     app = split[2]
                     time = int(split[3])    # in ms
+                    act_int = activity_to_int(act, var.activities)
                     if mode.lower() == 'full':
                         data = [app]
                     elif mode.lower() == 'part':
@@ -720,7 +722,7 @@ if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     MODE = [
-        'Cat'
+        'Full', 'Part', 'Cat'
     ]  ## 'Full', 'Part', 'Cat'
 
     TOP_K = 10
@@ -753,22 +755,22 @@ if __name__ == '__main__':
         debug('len(app_names): {}'.format(len(app_names)))
 
         ### Read dataset for the experiments
-        # users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=False)
-        # debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+        users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=True)
+        debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
         ### Generate testing report using machine learning evaluation
-        # generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories)
+        generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories)
         # generate_testing_report_agg(users_data, clear_data=False)
 
         ### Extract time of each apps
-        global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
-        ### Global timeline
-        time_of_day, day_of_week, time_of_week = time_slots_extraction(global_timeline)
-        timeline_report(mode, 'GLOBAL', categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
-        ### Personal timeline
-        for uid in user_ids:
-            time_of_day, day_of_week, time_of_week = time_slots_extraction(personal_timeline[uid])
-            timeline_report(mode, uid, categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
+        # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=False)
+        # ### Global timeline
+        # time_of_day, day_of_week, time_of_week = time_slots_extraction(global_timeline)
+        # timeline_report(mode, 'GLOBAL', categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
+        # ### Personal timeline
+        # for uid in user_ids:
+        #     time_of_day, day_of_week, time_of_week = time_slots_extraction(personal_timeline[uid])
+        #     timeline_report(mode, uid, categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
 
         ### Extract statistics
         # uids = {}
