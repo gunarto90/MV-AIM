@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.2
-2016/12/01 08.52PM
+Version 1.0.3
+2016/12/08 04:30PM
 """
 
 """
