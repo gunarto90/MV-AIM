@@ -16,6 +16,7 @@ TEMPORAL                = 'temporal/'
 
 CROSS_VALIDATION        = 'cv/'
 STATISTICS              = 'stats/'
+CLASSIFIER              = 'classifier/'
 
 dataset_folder          = 'dataset/'
 working_folder          = 'working/'
@@ -29,3 +30,4 @@ temporal_folder         = working_folder + TEMPORAL
 
 soft_cv_model_folder    = model_folder + SOFTWARE + CROSS_VALIDATION
 soft_statistics_folder  = model_folder + SOFTWARE + STATISTICS
+soft_classifier         = model_folder + CLASSIFIER

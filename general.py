@@ -153,5 +153,6 @@ def init(file='users.json'):
 
     make_sure_path_exists(cd.soft_cv_model_folder)
     make_sure_path_exists(cd.soft_statistics_folder)
+    make_sure_path_exists(cd.soft_classifier)
     ### Return user ids
     return user_ids

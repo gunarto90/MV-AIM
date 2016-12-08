@@ -102,7 +102,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
             try:
                 if filename is None:
                     raise Exception('Filename is None')
-                with open(cd.model_folder + filename, 'rb') as f:
+                with open(cd.soft_classifier + filename, 'rb') as f:
                     fit = pickle.load(f)
                     load = True
             except:
@@ -118,9 +118,9 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
 
         try:
             if filename is not None and not load:
-                with open(cd.model_folder + filename, 'wb') as f:
+                with open(cd.soft_classifier + filename, 'wb') as f:
                     pickle.dump(fit, f)
-                    debug('Writing to {}'.format(cd.model_folder + filename))
+                    debug('Writing to {}'.format(cd.soft_classifier + filename))
         except Exception as ex:
             debug(ex, get_function_name())
         mean_acc += acc
