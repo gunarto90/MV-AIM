@@ -1,12 +1,19 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.5
-2016/12/01 10:22PM
+Version 1.0.6
+2016/12/08 04:30PM
+"""
+"""
+Added leave one out cross validation
 """
 from general import *
+from view_soft import extract_app_statistics, select_top_k_apps
+
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from sklearn.metrics import roc_curve, auc
+
+from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.model_selection import StratifiedKFold
 
 from sklearn.svm import SVC, LinearSVC
@@ -30,7 +37,6 @@ def classifier_list():
     ### Forests
     clfs['grf']     = RandomForestClassifier(n_jobs=4, criterion='gini')
     clfs['erf']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
-    # clfs['isf']     = IsolationForest()
     clfs['etr']     = ExtraTreesClassifier()
     ### Boosting
     clfs['gbc']     = GradientBoostingClassifier()
@@ -46,43 +52,51 @@ def classifier_list():
     clfs['gnb']     = GaussianNB()      # Worst
     clfs['bnb']     = BernoulliNB()     # Good
     clfs['mnb']     = MultinomialNB()   # Best
-    ### Decision Tree (CART)
+    # ### Decision Tree (CART)
     clfs['gdt']     = DecisionTreeClassifier(criterion='gini')
     clfs['edt']     = DecisionTreeClassifier(criterion='entropy')
     clfs['egt']     = ExtraTreeClassifier(criterion='gini')
     clfs['eet']     = ExtraTreeClassifier(criterion='entropy')
     return clfs
 
+def get_cv(k_fold, groups, X, y):
+    if groups is None:
+        ### Personal CV
+        skf  = StratifiedKFold(n_splits=k_fold)
+        n_split = skf.get_n_splits(X, y)
+        cv = skf.split(X, y)
+    else:
+        ### Group (leave one subject out)
+        logo = LeaveOneGroupOut()
+        n_split = logo.get_n_splits(X, y, groups)
+        cv = logo.split(X, y, groups=groups)
+    return cv, n_split
+
 """
 X: training dataset (features)
 y: testing dataset  (label)
 clf: classifier
 """
-def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default'):
+def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None):
     output = {}
-    # mean_tpr = 0.0
-    # mean_fpr = np.linspace(0, 1, 100)
-
-    # mean_precision = 0.0
-    # mean_recall = 0.0
-    # mean_f1 = 0.0
-    mean_acc = 0.0
-
-    total_ytrue = sum(y)
-
-    cv = StratifiedKFold(n_splits=k_fold)
-
     i = 0
     train_time = 0.0
     test_time = 0.0
-    n_split = cv.get_n_splits(X, y)
-    for (train, test) in cv.split(X, y):
+    mean_acc = 0.0
+    total_ytrue = sum(y)
+
+    cv, n_split = get_cv(k_fold, groups, X, y)
+
+    debug('Cross validation : {} times'.format(n_split))
+    for (train, test) in cv:
         uid = info.get('uid')
         clf_name = info.get('clf_name')
         filename = None
         if uid is not None and clf_name is not None:
             filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode)
 
+        success = True
+        load = False
         query_time = time.time()
         if cached:
             try:
@@ -90,62 +104,62 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default'):
                     raise Exception('Filename is None')
                 with open(cd.model_folder + filename, 'rb') as f:
                     fit = pickle.load(f)
+                    load = True
             except:
-                fit = clf.fit(X[train], y[train])
-        elif cached is False:
+                success = False
+        if not cached or not success:
             fit = clf.fit(X[train], y[train])
         train_time += (time.time() - query_time)
         # probas_ = fit.predict_proba(X[test])
         query_time = time.time()
         inference = fit.predict(X[test])
         test_time += (time.time() - query_time)
-        # Compute ROC curve and area the curve
-        # fpr, tpr, thresholds = roc_curve(y[test], probas_[:, 1])
-        # mean_tpr += interp(mean_fpr, fpr, tpr)
-        # mean_tpr[0] = 0.0
-        # roc_auc = auc(fpr, tpr)
-
-        # precision, recall, thresholds = precision_recall_curve(y[test], probas_[:, 1])
-        # average = 'weighted'
-        # precision = precision_score(y[test], inference, average=average)
-        # recall = recall_score(y[test], inference, average=average)
-        # f1 = f1_score(y[test], inference, average=average)
         acc = accuracy_score(y[test], inference)
 
-        if filename is not None:
-            with open(cd.model_folder + filename, 'wb') as f:
-                pickle.dump(fit, f)
-
-        # mean_precision += precision
-        # mean_recall += recall
-        # mean_f1 += f1
+        try:
+            if filename is not None and not load:
+                with open(cd.model_folder + filename, 'wb') as f:
+                    pickle.dump(fit, f)
+                    debug('Writing to {}'.format(cd.model_folder + filename))
+        except Exception as ex:
+            debug(ex, get_function_name())
         mean_acc += acc
-        # debug(roc_auc)
         i += 1
-    # mean_tpr /= n_split
-    # mean_tpr[-1] = 1.0
-    # mean_auc = auc(mean_fpr, mean_tpr)
 
-    # mean_precision /= n_split
-    # mean_recall /= n_split
-    # mean_f1 /= n_split
     mean_acc /= n_split
     train_time /= n_split
     test_time /= n_split
 
-    # output['auc']   = mean_auc
-    # output['p']     = mean_precision
-    # output['r']     = mean_recall
-    # output['f1']    = mean_f1
     output['acc']           = mean_acc
     output['time_train']    = train_time
     output['time_test']     = test_time
-    # output['y1']    = total_ytrue
 
     return output
+
 
 """
 Application view's evaluation using top-k and scoring method
 """
-def soft_evaluation(X, y, top_k_apps, weighting):
+def train_soft():
     pass
+
+def test_soft():
+    pass
+
+def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, app_names=None, categories=None, cached=True, k_fold=5, groups=None):
+    data = np.array(data)
+    ncol = data.shape[1]
+    X = data[:,3:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
+    y = data[:,2]
+
+    cv, n_split = get_cv(k_fold, groups, X, y)
+
+    acts_app = extract_app_statistics(data, mode, uid, app_names=app_names, categories=categories, cached=cached)
+    # debug(acts_app[2])
+    top_k_apps = select_top_k_apps(topk, acts_app, sorting, sort_mode)
+    for i in range(len(var.activities)):
+        debug(var.activities[i], clean=True)
+        top = top_k_apps[i]
+        for app_id, value in top:
+            debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
+        print()
