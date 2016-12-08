@@ -15,6 +15,7 @@ SPATIAL                 = 'spatial/'
 TEMPORAL                = 'temporal/'
 
 CROSS_VALIDATION        = 'cv/'
+STATISTICS              = 'stats/'
 
 dataset_folder          = 'dataset/'
 working_folder          = 'working/'
@@ -27,3 +28,4 @@ spatial_folder          = working_folder + SPATIAL
 temporal_folder         = working_folder + TEMPORAL
 
 soft_cv_model_folder    = model_folder + SOFTWARE + CROSS_VALIDATION
+soft_statistics_folder  = model_folder + SOFTWARE + STATISTICS
