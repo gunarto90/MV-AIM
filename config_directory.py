@@ -31,3 +31,5 @@ temporal_folder         = working_folder + TEMPORAL
 soft_cv_model_folder    = model_folder + SOFTWARE + CROSS_VALIDATION
 soft_statistics_folder  = model_folder + SOFTWARE + STATISTICS
 soft_classifier         = model_folder + CLASSIFIER
+
+soft_report             = report_folder + SOFTWARE

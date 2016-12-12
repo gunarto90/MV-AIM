@@ -44,7 +44,7 @@ STOP_FILENAME           = 'stop_app.txt'
 APP_AGG_NAME            = 'app_agg.bin'
 APP_SINGLE_NAME         = 'app_single.bin'
 
-APP_STATS_NAME          = 'acts_stats_{}_{}_{}_{}.bin'  ### mode uid
+APP_STATS_NAME          = 'acts_stats_{}_{}_SORT[{}]_WEIGHT[{}]_{}_{}.bin'  ### mode uid
 
 SOFT_FORMAT             = '{}/{}_soft.csv'              ## Original app data
 SOFT_PART_FORMAT        = '{}/{}_soft_part.csv'         ## Processed: part name
@@ -67,11 +67,13 @@ REPORT_TOD_NAME         = '{}/soft_report_tod_{}_{}.csv'
 REPORT_DOW_NAME         = '{}/soft_report_dow_{}_{}.csv'
 REPORT_TOW_NAME         = '{}/soft_report_tow_{}_{}.csv'
 
+REPORT_TOPK_NAME        = 'soft_report_topk_{}_{}_{}.csv' ## {single/agg} {full/part/cat} {date.today()}
+
 APP_F_THRESHOLD         = 1000  ## Minimum occurrence of the app throughout the dataset
 TIME_WINDOW             = 1000  ## in ms
 
 DEFAULT_SORTING         = 'f'       ### ef: entropy frequency, f: frequency, erf: entropy*sqrt(freqency)
-WEIGHTING               = 'g'       ### g: general (unweighted), r: rank on list
+DEFAULT_WEIGHTING       = 'g'       ### g: general (unweighted), w: rank on list, f: frequency, e: 1-entropy, ef: e*f, erf: e*sqrt(f)
 
 COLUMN_NAMES            = 'UID,Classifier,Accuracy,TrainTime(s),TestTime(s)'
 
@@ -114,7 +116,7 @@ def init_sorting_schemes():
     sorting['erf']  = (lambda value: (1-value[1]['e'])*sqrt(value[1]['f']), True)
     sorting['ef']   = (lambda value: (1-value[1]['e'])*value[1]['f'], True)
     sorting['f']    = (lambda value: value[1]['f'], True)
-    # sorting['e']    = (lambda value: value[1]['e'], False)
+    sorting['e']    = (lambda value: value[1]['e'], False)
     return sorting
 
 """
@@ -555,15 +557,15 @@ def timeline_report(mode, uid, categories=None, time_of_day=None, day_of_week=No
         write_to_file_buffered(REPORT_TOW_NAME.format(cd.report_folder, mode, uid), texts)
         del texts[:]
 
-def extract_app_statistics(X, y, mode, uid, app_names=None, categories=None, cached=True, counter=0, length=0):
+def extract_app_statistics(X, y, mode, uid, sort_mode, weight_mode, app_names=None, categories=None, cached=True, counter=0, length=0):
     acts_app = []   ### For every activities it would have a dictionary
     if cached:
         try:
-            filename = cd.soft_statistics_folder + APP_STATS_NAME.format(mode, uid, counter, length)
+            filename = cd.soft_statistics_folder + APP_STATS_NAME.format(mode, uid, sort_mode, weight_mode, counter, length)
             with open(filename, 'rb') as f:
                 acts_app = pickle.load(f)
         except:
-            extract_app_statistics(X, y, mode, uid, app_names, categories, cached=False)
+            extract_app_statistics(X, y, mode, uid, sort_mode, weight_mode, app_names, categories, cached=False)
     else:
         frequencies = []    ### consist of {} -- dict of (app name and frequency score)
         entropies = {}      ### dict of (app name and entropy score)
@@ -625,7 +627,7 @@ def extract_app_statistics(X, y, mode, uid, app_names=None, categories=None, cac
                 act_dict[name] = {'f': f, 'e': e}
 
         ### Write acts_app data into file
-        filename = cd.soft_statistics_folder + APP_STATS_NAME.format(mode, uid, counter, length)
+        filename = cd.soft_statistics_folder + APP_STATS_NAME.format(mode, uid, sort_mode, weight_mode, counter, length)
         with open(filename, 'wb') as f:
             pickle.dump(acts_app, f)
     return acts_app
@@ -638,28 +640,47 @@ def select_top_k_apps(top_k, acts_app, sorting, sort_mode=DEFAULT_SORTING):
         # debug(sorted(acts_app[i].items(), key=lambda value: value[1]['f'], reverse=True))
         (sort, desc) = sorting[sort_mode]
         ### Sorting based on sorting schemes
-        top = []
+        top = {}
         for app_id, value in sorted(acts_app[i].items(), key=sort, reverse=desc):
             if k >= top_k:
                 break
-            top.append((app_id, value))
+            top[app_id] = (value, k)
             k += 1
         top_k_apps[i] = top
     return top_k_apps
 
-def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode, app_names=None, categories=None, cached=True, single=True):
-    ctr_uid = 0
+def evaluate_topk_apps_various(users_data, user_ids, mode, TOPK, sorting, SORT_MODES, WEIGHT_MODES, app_names=None, categories=None, cached=True, single=True):
     if single:
+        agg_type = 'single'
+    else:
+        agg_type = 'agg'
+    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, date.today())
+    remove_file_if_exists(filename)
+    text = 'UID,Mode,Topk,Sort,Weight,Acc,Train,Test'
+    write_to_file(filename, text)
+    for topk in TOP_K:
+        for sort in SORTS:
+            for weight in WEIGHTS:
+                evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=sort, weight_mode=weight, app_names=app_names, categories=categories, cached=False, single=True)
+
+def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFAULT_SORTING, weight_mode=DEFAULT_WEIGHTING, app_names=None, categories=None, cached=True, single=True):
+    ctr_uid = 0
+    texts = []
+    if single:
+        agg_type = 'single'
         for uid, data in users_data.items():
             ctr_uid += 1
+            debug('SORT: {}, WEIGHT: {}'.format(sort_mode, weight_mode))
             debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(users_data)), out_file=True)
             debug('#Rows: {}'.format(len(data)), out_file=True)
             if uid not in user_ids:
                 continue
-            soft_evaluation(data, uid, mode, topk, sorting, sort_mode, app_names=app_names, categories=categories, cached=cached)
+            output = soft_evaluation(data, uid, mode, topk, sorting, sort_mode=sort_mode, weight_mode=weight_mode, app_names=app_names, categories=categories, cached=cached)
+            texts.append('{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, output['acc'], output['time_train'], output['time_test']))
     else:
         dataset = []
         groups  = []
+        agg_type = 'agg'
         for uid, data in users_data.items():
             ctr_uid += 1
             if uid not in user_ids:
@@ -667,18 +688,31 @@ def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode, app
             for x in data:
                 dataset.append(x)
                 groups.append(ctr_uid)
-        soft_evaluation(dataset, uid, mode, topk, sorting, sort_mode, app_names=app_names, categories=categories, cached=cached, groups=groups)
+        uid = 'ALL'
+        output = soft_evaluation(dataset, uid, mode, topk, sorting, sort_mode=sort_mode, weight_mode=weight_mode, app_names=app_names, categories=categories, cached=cached, groups=groups)
+        texts.append('{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, output['acc'], output['time_train'], output['time_test']))
+    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, date.today())
+    write_to_file_buffered(filename, texts)
 
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     MODE = [
-        'Cat'
-    ]  ## 'Full', 'Part', 'Cat', 'Hybrid'
+        'Full'
+    ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
 
-    TOP_K = 10
-    SORT_MODE = 'erf'
+    TOP_K = [
+        10
+    ]   ## 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
+
+    SORTS = [
+        'f', 'ef', 'erf'
+    ]   ## 'f', 'ef', 'erf'
+
+    WEIGHTS = [
+        'g', 'w', 'f', 'e', 'ef', 'erf'
+    ]   ## 'g', 'w', 'f', 'e', 'ef', 'erf'
 
     ### Init sorting mechanism
     sorting = init_sorting_schemes()
@@ -725,7 +759,7 @@ if __name__ == '__main__':
         #     timeline_report(mode, uid, categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
 
         ### Top-k apps evaluation
-        evaluate_topk_apps(users_data, user_ids, mode, TOP_K, sorting, SORT_MODE, app_names=app_names, categories=categories, cached=False, single=True)
+        evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=True)
 
         ### Extract statistics
         # ctr_uid = 0

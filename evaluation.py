@@ -29,6 +29,7 @@ import numpy as np
 import time
 import scipy
 import pickle
+import random
 
 MODEL_FILENAME = '{}_{}_{}_{}_{}.bin'  # uid clf_name #iter #total mode
 
@@ -136,34 +137,106 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
 
     return output
 
-
 """
 Application view's evaluation using top-k and scoring method
 """
-def train_soft():
-    pass
+def test_soft(top_k_apps, X, y, mode, app_names, categories, weight_mode, topk):
+    ncol = X.shape[1]
+    correct = 0.0
+    for i in range(len(X)):
+        temp = []
+        scores = np.zeros(len(var.activities))
+        ## Transform binary values into name list
+        # debug(sum(X[i]))
+        for j in range(ncol):
+            if X[i][j] == 1:
+                if mode.lower() == 'full' or mode.lower() == 'part':
+                    name = app_names[j]
+                elif mode.lower() == 'cat':
+                    name = categories[j]
+                temp.append(name)
+        # debug(temp)
+        ## Evaluate on each
+        for j in range(len(var.activities)):
+            top = top_k_apps[j]
+            if len(top) > 0:
+                for name in temp:
+                    found = top.get(name)
+                    if found is not None:
+                        (value, rank) = found
+                        if weight_mode == 'g':
+                            scores[j] += 1.0
+                        elif weight_mode == 'w':
+                            scores[j] += len(top) - rank
+                        elif weight_mode == 'f':
+                            scores[j] += value['f']
+                        elif weight_mode == 'e':
+                            scores[j] += (1 - value['e'])
+                        elif weight_mode == 'ef':
+                            e = 1 - value['e']
+                            f = value['f']
+                            scores[j] += (e*f)
+                        elif weight_mode == 'erf':
+                            e = 1 - value['e']
+                            f = sqrt(value['f'])
+                            scores[j] += (e*f)
+        ## Get the "max" scores
+        # debug(scores)
+        max_score = max(scores)
+        inferences = []
+        for i in range(len(var.activities)):
+            if scores[i] == max_score:
+                inferences.append(i)
+        inference = random.choice(inferences)
+        # print(inference, y[i])
+        if inference == y[i]:
+            correct += 1
+    correct /= len(X)
+    return correct
 
-def test_soft():
-    pass
-
-def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, app_names=None, categories=None, cached=True, k_fold=5, groups=None):
+def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_names=None, categories=None, cached=True, k_fold=5, groups=None):
     data = np.array(data)
     ncol = data.shape[1]
     X = data[:,3:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
     y = data[:,2]
 
+    train_time = 0.0
+    test_time = 0.0
+    mean_acc = 0.0
+
     cv, n_split = get_cv(k_fold, groups, X, y)
     counter = 0
+    output = {}
     for (train, test) in cv:
-        acts_app = extract_app_statistics(X[train], y[train], mode, uid, app_names=app_names, categories=categories, cached=cached, counter=counter, length=n_split)
-        # debug(acts_app[2])
+        ### Training
+        query_time = time.time()
+        acts_app = extract_app_statistics(X[train], y[train], mode, uid, sort_mode, weight_mode, app_names=app_names, categories=categories, cached=cached, counter=counter, length=n_split)
         top_k_apps = select_top_k_apps(topk, acts_app, sorting, sort_mode)
-        for i in range(len(var.activities)):
-            top = top_k_apps[i]
-            if len(top) > 0:
-                debug(var.activities[i], clean=True)
-                debug('app,entropy,frequency', clean=True)
-                for app_id, value in top:
-                    debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
-                print()
+        train_time += (time.time() - query_time)
+        ### Testing
+        query_time = time.time()
+        mean_acc += test_soft(top_k_apps, X, y, mode, app_names, categories, weight_mode, topk)
+        test_time += (time.time() - query_time)
+        ### Print top-k apps
+        # for i in range(len(var.activities)):
+        #     top = top_k_apps[i]
+        #     if len(top) > 0:
+        #         debug(var.activities[i], clean=True)
+        #         debug('app,entropy,frequency', clean=True)
+        #         for app_id, (value, k) in sorted(top.items(), key=lambda value: value[1][1]):   # Sort using rank
+        #             debug('{} : [e:{}, f:{}, rank:{}]'.format(app_id, value['e'], value['f'], k), clean=True)
+        #         print()
+        ### Increment counter
         counter += 1
+
+    mean_acc /= n_split
+    train_time /= n_split
+    test_time /= n_split
+
+    output['acc']           = mean_acc
+    output['time_train']    = train_time
+    output['time_test']     = test_time
+
+    debug(output)
+
+    return output
