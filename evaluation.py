@@ -31,7 +31,7 @@ import scipy
 import pickle
 import random
 
-MODEL_FILENAME = '{}_{}_{}_{}_{}.bin'  # uid clf_name #iter #total mode
+MODEL_FILENAME = '{}_{}_{}_{}_{}_{}.bin'  # uid clf_name #iter #total mode
 
 def classifier_list():
     clfs = {}
@@ -78,7 +78,7 @@ X: training dataset (features)
 y: testing dataset  (label)
 clf: classifier
 """
-def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None):
+def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0):
     output = {}
     i = 0
     train_time = 0.0
@@ -94,7 +94,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         clf_name = info.get('clf_name')
         filename = None
         if uid is not None and clf_name is not None:
-            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode)
+            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window)
 
         success = True
         load = False
