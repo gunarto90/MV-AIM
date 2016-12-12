@@ -44,12 +44,12 @@ STOP_FILENAME           = 'stop_app.txt'
 APP_AGG_NAME            = 'app_agg.bin'
 APP_SINGLE_NAME         = 'app_single.bin'
 
-APP_STATS_NAME          = 'acts_stats_{}_{}.bin' ### mode uid
+APP_STATS_NAME          = 'acts_stats_{}_{}_{}_{}.bin'  ### mode uid
 
-SOFT_FORMAT             = '{}/{}_soft.csv'          ## Original app data
-SOFT_PART_FORMAT        = '{}/{}_soft_part.csv'     ## Processed: part name
-SOFT_FULL_FORMAT        = '{}/{}_soft_full.csv'     ## Processed: full name
-SOFT_CATEGORY_FORMAT    = '{}/{}_soft_cat.csv'      ## Processed: category
+SOFT_FORMAT             = '{}/{}_soft.csv'              ## Original app data
+SOFT_PART_FORMAT        = '{}/{}_soft_part.csv'         ## Processed: part name
+SOFT_FULL_FORMAT        = '{}/{}_soft_full.csv'         ## Processed: full name
+SOFT_CATEGORY_FORMAT    = '{}/{}_soft_cat.csv'          ## Processed: category
 
 USERS_DATA_PART_NAME    = 'users_part_data.bin'
 USERS_DATA_FULL_NAME    = 'users_full_data.bin'
@@ -411,6 +411,7 @@ def generate_testing_report_agg(users_data, user_ids, clear_data=False, full=Fal
         for x in data:
             dataset.append(x)
             groups.append(ctr_uid)
+    uid = 'ALL'
     result = testing(dataset, uid, cached=cached, mode=mode, groups=groups)
     if clear_data:
         try:
@@ -554,23 +555,20 @@ def timeline_report(mode, uid, categories=None, time_of_day=None, day_of_week=No
         write_to_file_buffered(REPORT_TOW_NAME.format(cd.report_folder, mode, uid), texts)
         del texts[:]
 
-def extract_app_statistics(data, mode, uid, app_names=None, categories=None, cached=True):
+def extract_app_statistics(X, y, mode, uid, app_names=None, categories=None, cached=True, counter=0, length=0):
     acts_app = []   ### For every activities it would have a dictionary
     if cached:
         try:
-            filename = cd.soft_statistics_folder + APP_STATS_NAME.format(mode, uid)
+            filename = cd.soft_statistics_folder + APP_STATS_NAME.format(mode, uid, counter, length)
             with open(filename, 'rb') as f:
                 acts_app = pickle.load(f)
         except:
-            extract_app_statistics(data, mode, uid, app_names, categories, cached=False)
+            extract_app_statistics(X, y, mode, uid, app_names, categories, cached=False)
     else:
         frequencies = []    ### consist of {} -- dict of (app name and frequency score)
         entropies = {}      ### dict of (app name and entropy score)
-        dataset = np.array(data)
-        n_row = dataset.shape[0]
-        n_col = dataset.shape[1]
-        data_s = []
-        cond_s = []
+        cond_s = []         ### To extract X in each activity
+        Xss = []            ### Store X in each activity
 
         names = None
         if categories is not None:
@@ -579,15 +577,13 @@ def extract_app_statistics(data, mode, uid, app_names=None, categories=None, cac
             names = app_names
 
         for i in range(len(var.activities)):
-            cond_s.append(dataset[:,2] == i)    ### Compare the activity label with current activity
-            data_s.append(dataset[cond_s[i]])
+            cond_s.append(y == i)       ### Compare the activity label with current activity
+            Xss.append(X[cond_s[i]])
 
         ### Extract basic stats for each app
         fs = []
         for i in range(len(var.activities)):
-            X = data_s[i][:,3:n_col] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
-            y = data_s[i][:,2]
-            f = np.sum(X, axis=0)
+            f = np.sum(Xss[i], axis=0)
             fs.append(f)
         ### Extract frequencies
         fs = np.array(fs)
@@ -627,10 +623,9 @@ def extract_app_statistics(data, mode, uid, app_names=None, categories=None, cac
                 if f is None:
                     continue
                 act_dict[name] = {'f': f, 'e': e}
-            # debug(act_dict)
 
         ### Write acts_app data into file
-        filename = cd.soft_statistics_folder + APP_STATS_NAME.format(mode, uid)
+        filename = cd.soft_statistics_folder + APP_STATS_NAME.format(mode, uid, counter, length)
         with open(filename, 'wb') as f:
             pickle.dump(acts_app, f)
     return acts_app
@@ -679,7 +674,7 @@ if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     MODE = [
-        'Full', 'Part', 'Cat'
+        'Cat'
     ]  ## 'Full', 'Part', 'Cat', 'Hybrid'
 
     TOP_K = 10
@@ -712,11 +707,11 @@ if __name__ == '__main__':
         debug('len(app_names): {}'.format(len(app_names)))
 
         ### Read dataset for the experiments
-        users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=False)
+        users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=True)
         debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
         ### Generate testing report using machine learning evaluation
-        # generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories, cached=False)
+        # generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories, cached=True)
         # generate_testing_report_agg(users_data, user_ids, clear_data=True, full=full_app_name, categories=categories, cached=True)
 
         ### Extract time of each apps
@@ -730,7 +725,7 @@ if __name__ == '__main__':
         #     timeline_report(mode, uid, categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
 
         ### Top-k apps evaluation
-        # evaluate_topk_apps(users_data, user_ids, mode, TOP_K, sorting, SORT_MODE, app_names=app_names, categories=categories, cached=False, single=True)
+        evaluate_topk_apps(users_data, user_ids, mode, TOP_K, sorting, SORT_MODE, app_names=app_names, categories=categories, cached=False, single=True)
 
         ### Extract statistics
         # ctr_uid = 0
