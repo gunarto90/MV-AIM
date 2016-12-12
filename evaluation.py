@@ -5,7 +5,7 @@ Version 1.0.6
 2016/12/08 04:30PM
 """
 """
-Added leave one out cross validation
+
 """
 from general import *
 from view_soft import extract_app_statistics, select_top_k_apps
@@ -153,13 +153,17 @@ def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, app_names=None, c
     y = data[:,2]
 
     cv, n_split = get_cv(k_fold, groups, X, y)
-
-    acts_app = extract_app_statistics(data, mode, uid, app_names=app_names, categories=categories, cached=cached)
-    # debug(acts_app[2])
-    top_k_apps = select_top_k_apps(topk, acts_app, sorting, sort_mode)
-    for i in range(len(var.activities)):
-        debug(var.activities[i], clean=True)
-        top = top_k_apps[i]
-        for app_id, value in top:
-            debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
-        print()
+    counter = 0
+    for (train, test) in cv:
+        acts_app = extract_app_statistics(X[train], y[train], mode, uid, app_names=app_names, categories=categories, cached=cached, counter=counter, length=n_split)
+        # debug(acts_app[2])
+        top_k_apps = select_top_k_apps(topk, acts_app, sorting, sort_mode)
+        for i in range(len(var.activities)):
+            top = top_k_apps[i]
+            if len(top) > 0:
+                debug(var.activities[i], clean=True)
+                debug('app,entropy,frequency', clean=True)
+                for app_id, value in top:
+                    debug('{},{},{}'.format(app_id, value['e'], value['f']), clean=True)
+                print()
+        counter += 1
