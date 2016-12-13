@@ -7,8 +7,6 @@ Version 1.0.12
 
 """
 ## ToDo !!:
-- From the users_data --> generate activity X apps vector which shows the score of each apps regarding its {frequency, entropy, entropy-frequency, other}
-- Top-k apps for the classifier
 """
 
 """
@@ -35,42 +33,36 @@ from math import sqrt
 from general import *
 from evaluation import *
 
+### Supporting files
 APP_PART_NAMES          = 'app_names_part.csv'
 APP_FULL_NAMES          = 'app_names_full.csv'
 CATEGORY_NAME           = 'category_lookup.csv'
 APP_CATEGORY            = 'app_category.csv'
 STOP_FILENAME           = 'stop_app.txt'
 
-APP_STATS_NAME          = 'acts_stats_{}_{}_SORT[{}]_WEIGHT[{}]_{}_{}.bin'  ### mode uid
+### Intermediate binary file
+USERS_DATA_NAME         = 'users_{}_data{}.bin'                             ## [Mode] [Time Window]
+APP_STATS_NAME          = 'acts_stats_{}_{}_SORT[{}]_WEIGHT[{}]_{}_{}.bin'  ### [Mode] [UID] [Sorting Mode] [Weighting Mode] [Counter] [Length]
 
-SOFT_FORMAT             = '{}/{}_soft.csv'              ## Original app data
-SOFT_PART_FORMAT        = '{}/{}_soft_part.csv'         ## Processed: part name
-SOFT_FULL_FORMAT        = '{}/{}_soft_full.csv'         ## Processed: full name
-SOFT_CATEGORY_FORMAT    = '{}/{}_soft_cat.csv'          ## Processed: category
+### Software dataset and intermediate
+SOFT_FORMAT             = '{}/{}_soft.csv'                                  ## Original app data    [Directory] [UID]
+SOFT_PROCESSED          = '{}/{}_soft_{}_{}.csv'                            ## Processed: part name [Directory] [UID] [Mode] [Time Window]
 
-USERS_DATA_PART_NAME    = 'users_part_data{}.bin'
-USERS_DATA_FULL_NAME    = 'users_full_data{}.bin'
-USERS_DATA_CAT_NAME     = 'users_cat_data{}.bin'
+### Reports
+REPORT_NAME             = '{}/soft_report_{}_{}_{}_{}.csv'                  ## [Directory] [agg/single] [Mode] [Time Window] [Today]
+REPORT_TOPK_NAME        = 'soft_report_topk_{}_{}_{}_{}.csv'                ## [single/agg] [full/part/cat] [Time Window] [Today]
 
-REPORT_PART_NAME        = '{}/soft_report_part_{}_{}.csv'
-REPORT_FULL_NAME        = '{}/soft_report_full_{}_{}.csv'
-REPORT_CAT_NAME         = '{}/soft_report_cat_{}_{}.csv'
-
-REPORT_AGG_PART_NAME    = '{}/soft_report_agg_part_{}_{}.csv'
-REPORT_AGG_FULL_NAME    = '{}/soft_report_agg_full_{}_{}.csv'
-REPORT_AGG_CAT_NAME     = '{}/soft_report_agg_cat_{}_{}.csv'
-
-REPORT_TOD_NAME         = '{}/soft_report_tod_{}_{}.csv'
-REPORT_DOW_NAME         = '{}/soft_report_dow_{}_{}.csv'
-REPORT_TOW_NAME         = '{}/soft_report_tow_{}_{}.csv'
-
-REPORT_TOPK_NAME        = 'soft_report_topk_{}_{}_{}.csv' ## {single/agg} {full/part/cat} {date.today()}
+REPORT_TOD_NAME         = '{}/soft_report_tod_{}_{}.csv'                    ## [Directory] [Mode] [UID]
+REPORT_DOW_NAME         = '{}/soft_report_dow_{}_{}.csv'                    ## [Directory] [Mode] [UID]
+REPORT_TOW_NAME         = '{}/soft_report_tow_{}_{}.csv'                    ## [Directory] [Mode] [UID]
 
 APP_F_THRESHOLD         = 1000  ## Minimum occurrence of the app throughout the dataset
-TIME_WINDOW             = 1000  ## in ms  [0]28409 [1000] 28377 [1100] 1100 [1500] 118 [2000] 86 [3000] 71 [5000] 52
+
+K_FOLD                  = 5
 
 DEFAULT_SORTING         = 'f'       ### ef: entropy frequency, f: frequency, erf: entropy*sqrt(freqency)
 DEFAULT_WEIGHTING       = 'g'       ### g: general (unweighted), w: rank on list, f: frequency, e: 1-entropy, ef: e*f, erf: e*sqrt(f)
+DEFAULT_TIME_WINDOW     = 1000      ### in ms
 
 COLUMN_NAMES            = 'UID,Classifier,Accuracy,TrainTime(s),TestTime(s)'
 
@@ -119,17 +111,11 @@ def init_sorting_schemes():
 """
 Generating dataset from raw file for the first time
 """
-def transform_dataset(user_ids, app_names, write=False, full=False, categories=None, app_cat=None, cached=False, time_window=0):
+def transform_dataset(user_ids, app_names, mode, write=False, categories=None, app_cat=None, cached=False, time_window=0):
     time_str = ''
     if time_window > 0:
         time_str = '_' + str(time_window)
-    if categories is None:
-        if full:
-            binary_filename = USERS_DATA_FULL_NAME.format(time_str)
-        else:
-            binary_filename = USERS_DATA_PART_NAME.format(time_str)
-    else:
-        binary_filename = USERS_DATA_CAT_NAME.format(time_str)
+    binary_filename = USERS_DATA_NAME.format(mode, time_str)
     ### Cached
     if cached:
         debug('Started reading dataset from file')
@@ -146,12 +132,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
     remove_digits = str.maketrans('', '', digits)
     users_data = {}
     ctr_uid = 0
-    if categories is not None:
-        agg_filename = SOFT_CATEGORY_FORMAT.format(cd.software_folder, 'ALL')
-    elif full:
-        agg_filename = SOFT_FULL_FORMAT.format(cd.software_folder, 'ALL')
-    else:
-        agg_filename = SOFT_PART_FORMAT.format(cd.software_folder, 'ALL')
+    agg_filename = SOFT_PROCESSED.format(cd.software_folder, 'ALL', mode, time_window)
     remove_file_if_exists(agg_filename)
     for uid in user_ids:
         ctr_uid += 1
@@ -160,6 +141,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
         users_data[uid] = user_data
         filename = SOFT_FORMAT.format(cd.dataset_folder, uid)
         ctr = 0
+        num_lines = sum(1 for line in open(filename))
         with open(filename) as fr:
             debug('Transforming : {} [{}/{}]'.format(filename, ctr_uid, len(user_ids)), callerid=get_function_name(), out_file=True)
             time = 0
@@ -171,11 +153,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
             else:
                 for i in range(len(categories)):
                     app_dist.append(0)
-            temp_text = []
             for line in fr:
-                temp_text.append(line)
-            for i in range(len(temp_text)):
-                line = temp_text[i]
                 split = line.lower().strip().split(',')
                 uid = int(split[0])
                 act = split[1]
@@ -191,7 +169,7 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                             try:
                                 idx = app_names.index(app_id)
                                 if idx != -1:
-                                    app_dist[idx] += 1
+                                    app_dist[idx] = 1   ## or += 1?
                             except:
                                 ### Because some app names are deleted to save resources
                                 pass
@@ -199,15 +177,15 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                         try:
                             idx = app_names.index(app)
                             if idx != -1:
-                                app_dist[idx] += 1
+                                app_dist[idx] = 1       ## or += 1?
                         except:
                             ### Because some app names are deleted to save resources
                             pass
                 else:
                     cat = app_cat.get(app.strip())
                     if cat is not None:
-                        app_dist[cat] += 1
-                if abs(time - previous_time) >= time_window or i == len(temp_text)-1:
+                        app_dist[cat] = 1               ## or += 1?
+                if abs(time - previous_time) >= time_window or ctr == num_lines-1:
                     if sum(app_dist) > 0:
                         soft = (','.join(str(x) for x in app_dist))
                         text = '{},{},{}'.format(uid, act_int, soft)
@@ -232,20 +210,13 @@ def transform_dataset(user_ids, app_names, write=False, full=False, categories=N
                 previous_time = time
 
                 ctr += 1
-                if ctr % 100000 == 0:
-                    debug('Processing {:,} lines'.format(ctr), out_file=True)
-            del temp_text[:]
-            del temp_text
+                # if ctr % 100000 == 0:
+                #     debug('Processing {:,} lines'.format(ctr), out_file=True)
             debug('len(texts): {}'.format(len(lines)))
             debug('len(file) : {}'.format(ctr))
             if write:
                 ### Write to each user's file
-                if categories is not None:
-                    filename = SOFT_CATEGORY_FORMAT.format(cd.software_folder, uid)
-                elif full:
-                    filename = SOFT_FULL_FORMAT.format(cd.software_folder, uid)
-                else:
-                    filename = SOFT_PART_FORMAT.format(cd.software_folder, uid)
+                agg_filename = SOFT_PROCESSED.format(cd.software_folder, uid, mode, time_window)
                 remove_file_if_exists(filename)
                 ### Write each user's file
                 write_to_file_buffered(filename, lines, buffer_size=1000)
@@ -329,7 +300,7 @@ def get_all_apps_buffered(stop_words, full=False):
     return app_names
 
 ### label is put in the first column
-def testing(dataset, uid, cached=True, mode='Default', groups=None, time_window=TIME_WINDOW):
+def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TIME_WINDOW):
     debug('Processing: {}'.format(uid))
     dataset = np.array(dataset)
     clfs = classifier_list()
@@ -345,7 +316,7 @@ def testing(dataset, uid, cached=True, mode='Default', groups=None, time_window=
         for name, clf in clfs.items():
             debug(name)
             info['clf_name'] = name
-            output = evaluation(X, y, clf, info=info, cached=cached, mode=mode, groups=groups, time_window=time_window)
+            output = evaluation(X, y, clf, k_fold=K_FOLD, info=info, cached=cached, mode=mode, groups=groups, time_window=time_window)
             acc = output['acc']
             time_train = output['time_train']
             time_test = output['time_test']
@@ -357,83 +328,49 @@ def testing(dataset, uid, cached=True, mode='Default', groups=None, time_window=
         return None
 
 ### Generating testing report per user
-def generate_testing_report_single(users_data, user_ids, clear_data=False, full=False, categories=None, cached=True, time_window=TIME_WINDOW):
+def generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=None, cached=True, agg=False, time_window=DEFAULT_TIME_WINDOW):
     # ### Test
-    debug('Evaluating application data (single)', out_file=True)
+    if not agg:
+        debug('Evaluating application data (single)', out_file=True)
+    else:
+        debug('Evaluating application data (agg)', out_file=True)
+    dataset = []
+    groups  = []
     output = []
     output.append(COLUMN_NAMES)
     ctr_uid = 0
-    if categories is not None:
-        mode = 'cat'
-    elif full:
-        mode = 'full'
-    else:
-        mode = 'part'
     for uid, data in users_data.items():
         ctr_uid += 1
         debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(users_data)), out_file=True)
         debug('#Rows: {}'.format(len(data)), out_file=True)
         if uid not in user_ids:
             continue
-        # debug(data)
-        result = testing(data, uid, cached=cached, mode=mode)
+        if not agg:
+            result = testing(data, uid, mode=mode, cached=cached, time_window=time_window)
+            if result is not None:
+                output.extend(result)
+        else:
+            for x in data:
+                dataset.append(x)
+                groups.append(ctr_uid)
+    if agg:
+        uid = 'ALL'
+        result = testing(dataset, uid, mode=mode, cached=cached, groups=groups)
         if result is not None:
             output.extend(result)
-    if clear_data:
-        try:
-            users_data.clear()
-        except Exception as ex:
-            debug(ex, get_function_name())
-    if categories is not None:
-        filename = REPORT_CAT_NAME.format(cd.soft_report, time_window, date.today())
-    elif full:
-        filename = REPORT_FULL_NAME.format(cd.soft_report, time_window, date.today())
-    else:
-        filename = REPORT_PART_NAME.format(cd.soft_report, time_window, date.today())
-    remove_file_if_exists(filename)
-    write_to_file_buffered(filename, output)
-    # debug(output)
-
-### Generating testing report for all users
-def generate_testing_report_agg(users_data, user_ids, clear_data=False, full=False, categories=None, cached=True, time_window=TIME_WINDOW):
-    debug('Evaluating application data (agg)', out_file=True)
-    output = []
-    output.append(COLUMN_NAMES)
-    ctr_uid = 0
-    if categories is not None:
-        mode = 'cat'
-    elif full:
-        mode = 'full'
-    else:
-        mode = 'part'
-    dataset = []
-    groups  = []
-    for uid, data in users_data.items():
-        ctr_uid += 1
-        if uid not in user_ids:
-            continue
-        # debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(users_data)), out_file=True)
-        # debug('#Rows: {}'.format(len(data)), out_file=True)
-        for x in data:
-            dataset.append(x)
-            groups.append(ctr_uid)
-    uid = 'ALL'
-    result = testing(dataset, uid, cached=cached, mode=mode, groups=groups)
     if clear_data:
         try:
             del dataset[:]
         except Exception as ex:
             debug(ex, get_function_name())
-    if result is not None:
-        output.extend(result)
-    if categories is not None:
-        filename = REPORT_AGG_CAT_NAME.format(cd.soft_report, time_window, date.today())
-    elif full:
-        filename = REPORT_AGG_FULL_NAME.format(cd.soft_report, time_window, date.today())
+    if agg:
+        agg_name = 'agg'
     else:
-        filename = REPORT_AGG_PART_NAME.format(cd.soft_report, time_window, date.today())
+        agg_name = 'single'
+    filename = REPORT_NAME.format(cd.soft_report, agg_name, mode, time_window, date.today())
     remove_file_if_exists(filename)
     write_to_file_buffered(filename, output)
+    # debug(output)
 
 def extract_time_data(user_ids, mode, app_cat=None, cached=False):
     ctr_uid = 0
@@ -653,12 +590,12 @@ def select_top_k_apps(top_k, acts_app, sorting, sort_mode=DEFAULT_SORTING):
         top_k_apps[i] = top
     return top_k_apps
 
-def evaluate_topk_apps_various(users_data, user_ids, mode, TOPK, sorting, SORT_MODES, WEIGHT_MODES, app_names=None, categories=None, cached=True, single=True, time_window=TIME_WINDOW):
+def evaluate_topk_apps_various(users_data, user_ids, mode, TOPK, sorting, SORT_MODES, WEIGHT_MODES, app_names=None, categories=None, cached=True, single=True, time_window=DEFAULT_TIME_WINDOW):
     if single:
         agg_type = 'single'
     else:
         agg_type = 'agg'
-    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, date.today())
+    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, time_window, date.today())
     remove_file_if_exists(filename)
     text = 'UID,Mode,Topk,Sort,Weight,TimeWindow,Acc,Train,Test'
     write_to_file(filename, text)
@@ -667,7 +604,7 @@ def evaluate_topk_apps_various(users_data, user_ids, mode, TOPK, sorting, SORT_M
             for weight in WEIGHTS:
                 evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=sort, weight_mode=weight, app_names=app_names, categories=categories, cached=cached, single=single, time_window=time_window)
 
-def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFAULT_SORTING, weight_mode=DEFAULT_WEIGHTING, app_names=None, categories=None, cached=True, single=True, time_window=TIME_WINDOW):
+def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFAULT_SORTING, weight_mode=DEFAULT_WEIGHTING, app_names=None, categories=None, cached=True, single=True, time_window=DEFAULT_TIME_WINDOW):
     ctr_uid = 0
     texts = []
     if single:
@@ -680,7 +617,7 @@ def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFA
             if uid not in user_ids:
                 continue
             output = soft_evaluation(data, uid, mode, topk, sorting, sort_mode=sort_mode, weight_mode=weight_mode, app_names=app_names, categories=categories, cached=cached)
-            texts.append('{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, time_window, output['acc'], output['time_train'], output['time_test']))
+            texts.append('{},{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, time_window, output['acc'], output['time_train'], output['time_test']))
     else:
         dataset = []
         groups  = []
@@ -694,8 +631,8 @@ def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFA
                 groups.append(ctr_uid)
         uid = 'ALL'
         output = soft_evaluation(dataset, uid, mode, topk, sorting, sort_mode=sort_mode, weight_mode=weight_mode, app_names=app_names, categories=categories, cached=cached, groups=groups)
-        texts.append('{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, time_window, output['acc'], output['time_train'], output['time_test']))
-    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, date.today())
+        texts.append('{},{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, time_window, output['acc'], output['time_train'], output['time_test']))
+    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, time_window, date.today())
     write_to_file_buffered(filename, texts)
 
 # Main function
@@ -703,11 +640,11 @@ if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     MODE = [
-        'Cat'
+        'Full', 'Part', 'Cat'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
 
     TOP_K = [
-        10
+        5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
     ]   ## 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
 
     SORTS = [
@@ -715,12 +652,12 @@ if __name__ == '__main__':
     ]   ## 'f', 'ef', 'erf'
 
     WEIGHTS = [
-        'g', 'w', 'f', 'e', 'ef', 'erf'
-    ]   ## 'g', 'w', 'f', 'e', 'ef', 'erf'
+        'g', 'w', 'f', 'e', 'ef', 'erf', 'we', 'wef', 'werf'
+    ]   ## 'g', 'w', 'f', 'e', 'ef', 'erf', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
-        0, 1000, 1500, 2000
-    ]   ## 0, 1000, 1500, 2000
+        1000
+    ]   ## 1, 1000, 1250, 1500, 1750, 2000
 
     ### Init sorting mechanism
     sorting = init_sorting_schemes()
@@ -748,16 +685,19 @@ if __name__ == '__main__':
         app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name, cached=True)
         debug('len(app_names): {}'.format(len(app_names)))
 
-        ### Read dataset for the experiments
-        users_data = transform_dataset(user_ids, app_names, write=True, full=full_app_name, categories=categories, app_cat=app_cat, cached=False, time_window=TIME_WINDOW)
-        debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+        for time in TIME_WINDOWS:
+            ### Read dataset for the experiments
+            users_data = transform_dataset(user_ids, app_names, mode, write=True, categories=categories, app_cat=app_cat, cached=True, time_window=time)
+            debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
-        ### Generate testing report using machine learning evaluation
-        generate_testing_report_single(users_data, user_ids, clear_data=False, full=full_app_name, categories=categories, cached=False, time_window=TIME_WINDOW)
-        # generate_testing_report_agg(users_data, user_ids, clear_data=True, full=full_app_name, categories=categories, cached=True, time_window=TIME_WINDOW)
+            ### Generate testing report using machine learning evaluation
+            generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=False, time_window=time)
+
+            ### Top-k apps evaluation
+            evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=True, time_window=time)
 
         ### Extract time of each apps
-        # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=False)
+        # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
         # ### Global timeline
         # time_of_day, day_of_week, time_of_week = time_slots_extraction(global_timeline)
         # timeline_report(mode, 'GLOBAL', categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
@@ -765,9 +705,6 @@ if __name__ == '__main__':
         # for uid in user_ids:
         #     time_of_day, day_of_week, time_of_week = time_slots_extraction(personal_timeline[uid])
         #     timeline_report(mode, uid, categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
-
-        ### Top-k apps evaluation
-        evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=True, time_window=TIME_WINDOW)
 
         ### Extract statistics
         # ctr_uid = 0

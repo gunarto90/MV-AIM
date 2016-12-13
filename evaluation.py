@@ -31,7 +31,7 @@ import scipy
 import pickle
 import random
 
-MODEL_FILENAME = '{}_{}_{}_{}_{}_{}.bin'  # uid clf_name #iter #total mode
+MODEL_FILENAME = '{}_{}_{}_{}_{}_{}.bin'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW]
 
 def classifier_list():
     clfs = {}
@@ -40,9 +40,9 @@ def classifier_list():
     clfs['erf']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
     clfs['etr']     = ExtraTreesClassifier()
     ### Boosting
-    clfs['gbc']     = GradientBoostingClassifier()
-    clfs['ada']     = AdaBoostClassifier()
-    clfs['bag']     = BaggingClassifier()
+    # clfs['gbc']     = GradientBoostingClassifier()
+    # clfs['ada']     = AdaBoostClassifier()
+    # clfs['bag']     = BaggingClassifier()
     ### SVM
     clfs['lsvm']    = LinearSVC()
     # clfs['qsvm']    = SVC(probability=True, kernel='poly', degree=2)  # Slow
@@ -50,7 +50,7 @@ def classifier_list():
     # clfs['ssvm']    = SVC(probability=True, kernel='sigmoid')         # Slow
     # clfs['rsvm']    = SVC(probability=True, kernel='rbf')             # Slow
     ### Naive Bayes
-    clfs['gnb']     = GaussianNB()      # Worst
+    # clfs['gnb']     = GaussianNB()      # Worst
     clfs['bnb']     = BernoulliNB()     # Good
     clfs['mnb']     = MultinomialNB()   # Best
     # ### Decision Tree (CART)
@@ -63,7 +63,7 @@ def classifier_list():
 def get_cv(k_fold, groups, X, y):
     if groups is None:
         ### Personal CV
-        skf  = StratifiedKFold(n_splits=k_fold)
+        skf  = StratifiedKFold(n_splits=k_fold, shuffle=True)
         n_split = skf.get_n_splits(X, y)
         cv = skf.split(X, y)
     else:
@@ -140,57 +140,35 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
 """
 Application view's evaluation using top-k and scoring method
 """
-def test_soft(top_k_apps, X, y, mode, app_names, categories, weight_mode, topk):
+def test_soft(app_models, X, y, mode, app_names, categories, weight_mode, topk):
     ncol = X.shape[1]
     correct = 0.0
+    if mode.lower() == 'cat':
+        names = list(categories.values())
+    else:
+        names = list(app_names)
     for i in range(len(X)):
-        temp = []
-        scores = np.zeros(len(var.activities))
-        ## Transform binary values into name list
-        # debug(sum(X[i]))
-        for j in range(ncol):
-            if X[i][j] == 1:
-                if mode.lower() == 'full' or mode.lower() == 'part':
-                    name = app_names[j]
-                elif mode.lower() == 'cat':
-                    name = categories[j]
-                temp.append(name)
-        # debug(temp)
-        ## Evaluate on each
+        scores = []
+        ### Name in X (for debugging)
+        # catch = []
+        # for j in range(len(X[i])):
+        #     if X[i][j] > 0:
+        #         catch.append(names[j])
+        ### Calculate score for each activity
         for j in range(len(var.activities)):
-            top = top_k_apps[j]
-            if len(top) > 0:
-                for name in temp:
-                    found = top.get(name)
-                    if found is not None:
-                        (value, rank) = found
-                        if weight_mode == 'g':
-                            scores[j] += 1.0
-                        elif weight_mode == 'w':
-                            scores[j] += len(top) - rank
-                        elif weight_mode == 'f':
-                            scores[j] += value['f']
-                        elif weight_mode == 'e':
-                            scores[j] += (1 - value['e'])
-                        elif weight_mode == 'ef':
-                            e = 1 - value['e']
-                            f = value['f']
-                            scores[j] += (e*f)
-                        elif weight_mode == 'erf':
-                            e = 1 - value['e']
-                            f = sqrt(value['f'])
-                            scores[j] += (e*f)
-        ## Get the "max" scores
-        # debug(scores)
+            score = np.multiply(X[i], app_models[j])
+            scores.append(sum(score))
         max_score = max(scores)
         inferences = []
-        for i in range(len(var.activities)):
-            if scores[i] == max_score:
-                inferences.append(i)
+        for j in range(len(var.activities)):
+            if scores[j] == max_score:
+                inferences.append(j)
         inference = random.choice(inferences)
-        # print(inference, y[i])
+
         if inference == y[i]:
             correct += 1
+        # else:
+        #     print(inference, y[i], inferences, scores, sum(X[i]), catch)
     correct /= len(X)
     return correct
 
@@ -200,6 +178,10 @@ def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_
     X = data[:,3:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
     y = data[:,2]
 
+    # debug(data)
+    # debug(X)
+    # debug(y)
+
     train_time = 0.0
     test_time = 0.0
     mean_acc = 0.0
@@ -207,15 +189,62 @@ def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_
     cv, n_split = get_cv(k_fold, groups, X, y)
     counter = 0
     output = {}
+    if mode.lower() == 'cat':
+        names = list(categories.values())
+    else:
+        names = list(app_names)
+    # debug(names)
     for (train, test) in cv:
         ### Training
         query_time = time.time()
         acts_app = extract_app_statistics(X[train], y[train], mode, uid, sort_mode, weight_mode, app_names=app_names, categories=categories, cached=cached, counter=counter, length=n_split)
         top_k_apps = select_top_k_apps(topk, acts_app, sorting, sort_mode)
+        app_models = []
+        for i in range(len(var.activities)):
+            temp = []
+            app_models.append(temp)
+            for j in range(len(names)):
+                temp.append(0.0)
+            top = top_k_apps[i]
+            if len(top) > 0:
+                for app_id, (value, rank) in top.items():
+                    idx = names.index(app_id)
+                    if idx != -1:
+                        if weight_mode == 'g':
+                            score = 1.0
+                        elif weight_mode == 'w':
+                            score = len(top) - rank
+                        elif weight_mode == 'f':
+                            score = value['f']
+                        elif weight_mode == 'e':
+                            score = (1 - value['e'])
+                        elif weight_mode == 'ef':
+                            e = 1 - value['e']
+                            f = value['f']
+                            score = (e*f)
+                        elif weight_mode == 'erf':
+                            e = 1 - value['e']
+                            f = sqrt(value['f'])
+                            score= (e*f)
+                        elif weight_mode == 'we':
+                            e = 1 - value['e']
+                            w = len(top) - rank
+                            score = (e*w)
+                        elif weight_mode == 'wef':
+                            e = 1 - value['e']
+                            w = len(top) - rank
+                            f = value['f']
+                            score = (e*w*f)
+                        elif weight_mode == 'werf':
+                            e = 1 - value['e']
+                            w = len(top) - rank
+                            f = sqrt(value['f'])
+                            score = (e*w*f)
+                        temp[idx] = score
         train_time += (time.time() - query_time)
         ### Testing
         query_time = time.time()
-        mean_acc += test_soft(top_k_apps, X, y, mode, app_names, categories, weight_mode, topk)
+        mean_acc += test_soft(app_models, X[test], y[test], mode, app_names, categories, weight_mode, topk)
         test_time += (time.time() - query_time)
         ### Print top-k apps
         # for i in range(len(var.activities)):
