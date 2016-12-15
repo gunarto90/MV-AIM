@@ -64,7 +64,7 @@ DEFAULT_SORTING         = 'f'       ### ef: entropy frequency, f: frequency, erf
 DEFAULT_WEIGHTING       = 'g'       ### g: general (unweighted), w: rank on list, f: frequency, e: 1-entropy, ef: e*f, erf: e*sqrt(f)
 DEFAULT_TIME_WINDOW     = 1000      ### in ms
 
-COLUMN_NAMES            = 'UID,Classifier,Accuracy,TrainTime(s),TestTime(s)'
+COLUMN_NAMES            = 'UID,Classifier,Accuracy,TrainTime(s),TestTime(s),Mode,TimeWindow'
 
 """
 @Initialization methods
@@ -162,29 +162,28 @@ def transform_dataset(user_ids, app_names, mode, write=False, categories=None, a
                 act_int = activity_to_int(act, var.activities)
                 # print(act_int)
                 date = datetime.fromtimestamp(time / 1e3)
-                if categories is None:
-                    if not full:
-                        app_split = app.translate(remove_digits).replace(':','.').split('.')
-                        for app_id in app_split:
-                            try:
-                                idx = app_names.index(app_id)
-                                if idx != -1:
-                                    app_dist[idx] = 1   ## or += 1?
-                            except:
-                                ### Because some app names are deleted to save resources
-                                pass
-                    else:
-                        try:
-                            idx = app_names.index(app)
-                            if idx != -1:
-                                app_dist[idx] = 1       ## or += 1?
-                        except:
-                            ### Because some app names are deleted to save resources
-                            pass
-                else:
+                if mode.lower() == 'cat':
                     cat = app_cat.get(app.strip())
                     if cat is not None:
                         app_dist[cat] = 1               ## or += 1?
+                elif mode.lower() == 'full':
+                    try:
+                        idx = app_names.index(app)
+                        if idx != -1:
+                            app_dist[idx] = 1       ## or += 1?
+                    except:
+                        ### Because some app names are deleted to save resources
+                        pass
+                elif mode.lower() == 'part':
+                    app_split = app.translate(remove_digits).replace(':','.').split('.')
+                    for app_id in app_split:
+                        try:
+                            idx = app_names.index(app_id)
+                            if idx != -1:
+                                app_dist[idx] = 1   ## or += 1?
+                        except:
+                            ### Because some app names are deleted to save resources
+                            pass
                 if abs(time - previous_time) >= time_window or ctr == num_lines-1:
                     if sum(app_dist) > 0:
                         soft = (','.join(str(x) for x in app_dist))
@@ -320,7 +319,7 @@ def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TI
             acc = output['acc']
             time_train = output['time_train']
             time_test = output['time_test']
-            text = '{},{},{},{},{}'.format(uid, name, acc, time_train, time_test)
+            text = '{},{},{},{},{},{},{}'.format(uid, name, acc, time_train, time_test, mode, time_window)
             texts.append(text)
         return texts
     except Exception as ex:
@@ -611,7 +610,7 @@ def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFA
         agg_type = 'single'
         for uid, data in users_data.items():
             ctr_uid += 1
-            debug('SORT: {}, WEIGHT: {}'.format(sort_mode, weight_mode))
+            debug('SORT: {}, WEIGHT: {}, Top-K: {}'.format(sort_mode, weight_mode, topk))
             debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(users_data)), out_file=True)
             debug('#Rows: {}'.format(len(data)), out_file=True)
             if uid not in user_ids:
@@ -644,19 +643,19 @@ if __name__ == '__main__':
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
 
     TOP_K = [
-        5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
+        10
     ]   ## 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
 
     SORTS = [
-        'f', 'ef', 'erf'
+        'ef'
     ]   ## 'f', 'ef', 'erf'
 
     WEIGHTS = [
-        'g', 'w', 'f', 'e', 'ef', 'erf', 'we', 'wef', 'werf'
+        'wef'
     ]   ## 'g', 'w', 'f', 'e', 'ef', 'erf', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
-        1000
+        100, 200, 250, 500, 750
     ]   ## 1, 1000, 1250, 1500, 1750, 2000
 
     ### Init sorting mechanism
@@ -682,6 +681,7 @@ if __name__ == '__main__':
             app_cat = init_app_category()
 
         ### Transform original input into training and testing dataset
+        ## ToDo add hybrid in app_names extraction -- and then transform dataset also add hybrid
         app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name, cached=True)
         debug('len(app_names): {}'.format(len(app_names)))
 
@@ -694,7 +694,7 @@ if __name__ == '__main__':
             generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=False, time_window=time)
 
             ### Top-k apps evaluation
-            evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=True, time_window=time)
+            # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=True, time_window=time)
 
         ### Extract time of each apps
         # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
