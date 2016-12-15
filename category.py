@@ -36,6 +36,16 @@ def parsing_html(page):
         category = ''.join(node)
     return category
 
+def find_app_category(app_id):
+    try:
+        page = open_link(URL_FORMAT.format(app_id))
+        category = parsing_html(page)
+        print(app_id, category)
+    except Exception as ex:
+        # debug(app_id, ex)
+        category = '#Internal'
+    return category
+
 def main():
     apps = []
     with open(cd.working_folder + IN_FILENAME) as f:
@@ -44,13 +54,7 @@ def main():
             apps.append(split[0].strip())
     texts = []
     for app_id in apps:
-        try:
-            page = open_link(URL_FORMAT.format(app_id))
-            category = parsing_html(page)
-            print(app_id, category)
-        except Exception as ex:
-            debug(app_id, ex)
-            category = 'Internal'
+        category = find_app_category(app_id)
         text = '{},{}'.format(app_id, category)
         texts.append(text)
     write_to_file_buffered(cd.working_folder + OUT_FILENAME, texts)
