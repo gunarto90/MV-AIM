@@ -34,11 +34,10 @@ from general import *
 from evaluation import *
 
 ### Supporting files
-APP_PART_NAMES          = 'app_names_part.csv'
-APP_FULL_NAMES          = 'app_names_full.csv'
 CATEGORY_NAME           = 'category_lookup.csv'
 APP_CATEGORY            = 'app_category.csv'
 STOP_FILENAME           = 'stop_app.txt'
+APP_NAME_LIST           = 'app_{}.csv'
 
 ### Intermediate binary file
 USERS_DATA_NAME         = 'users_{}_data{}.bin'                             ## [Mode] [Time Window]
@@ -76,28 +75,22 @@ def init_stop_words(stop_app_filename):
             stop_words.append(line.strip())
     return stop_words
 
-def init_categories():
-    filename = cd.software_folder + CATEGORY_NAME
-    categories = {}
-    with open(filename) as f:
-        for line in f:
-            split = line.strip().split(',')
-            cat_name = split[0]
-            cat_id = int(split[1])
-            categories[cat_id] = cat_name
-    return categories
-
-def init_app_category():
-    filename = cd.software_folder + APP_CATEGORY
+def init_app_category(mode):
+    filename = cd.software_folder + APP_NAME_LIST.format(mode)
     app_cat = {}
+    categories = {}
     with open(filename) as f:
         for line in f:
             split = line.strip().split(',')
             app_name = split[0]
             cat_id = int(split[1])
             cat_name = split[2]
+            if mode.lower() == 'hybrid' and cat_name == '#Internal':
+                categories[cat_id] = app_name
+            else:
+                categories[cat_id] = cat_name
             app_cat[app_name] = cat_id
-    return app_cat
+    return categories, app_cat
 
 def init_sorting_schemes():
     sorting = {}
@@ -162,15 +155,19 @@ def transform_dataset(user_ids, app_names, mode, write=False, categories=None, a
                 act_int = activity_to_int(act, var.activities)
                 # print(act_int)
                 date = datetime.fromtimestamp(time / 1e3)
-                if mode.lower() == 'cat':
+                if mode.lower() == 'cat' or mode.lower() == 'hybrid':
                     cat = app_cat.get(app.strip())
                     if cat is not None:
-                        app_dist[cat] = 1               ## or += 1?
+                        try:
+                            app_dist[cat] = 1
+                        except Exception as ex:
+                            debug(cat)
+                            debug(ex, get_function_name())
                 elif mode.lower() == 'full':
                     try:
                         idx = app_names.index(app)
                         if idx != -1:
-                            app_dist[idx] = 1       ## or += 1?
+                            app_dist[idx] = 1
                     except:
                         ### Because some app names are deleted to save resources
                         pass
@@ -180,7 +177,7 @@ def transform_dataset(user_ids, app_names, mode, write=False, categories=None, a
                         try:
                             idx = app_names.index(app_id)
                             if idx != -1:
-                                app_dist[idx] = 1   ## or += 1?
+                                app_dist[idx] = 1
                         except:
                             ### Because some app names are deleted to save resources
                             pass
@@ -232,10 +229,26 @@ def transform_dataset(user_ids, app_names, mode, write=False, categories=None, a
 """
 Generating all apps names from raw file for the first time
 """
-def get_all_apps(user_ids, stop_words, write=False, split=True, cached=False):
+def get_all_apps(user_ids, stop_words, mode, write=False, cached=False):
     ### Cached
+    if mode.lower() == 'full' or mode.lower() == 'part':
+        app_filename = cd.software_folder + APP_NAME_LIST.format(mode.lower())
+    else:
+        app_filename = cd.software_folder + APP_NAME_LIST.format('full')
+    app_names = []
     if cached:
-        app_names = get_all_apps_buffered(stop_words, full=not split)
+        try:
+            with open(app_filename) as fr:
+                for line in fr:
+                    split = line.strip().split(',')
+                    try:
+                        f = int(split[1])
+                        if f > APP_F_THRESHOLD:
+                            app_names.append(split[0])
+                    except:
+                        pass
+        except Exception as ex:
+            debug(ex, get_function_name())
         if len(app_names) > 0:
             return app_names
     ### If not cached
@@ -250,53 +263,27 @@ def get_all_apps(user_ids, stop_words, write=False, split=True, cached=False):
                 for line in fr:
                     split = line.lower().strip().split(',')
                     app = split[2]
-                    if split:
+                    if mode.lower() == 'part':
                         app_split = app.translate(remove_digits).replace(':','.').split('.')
                         for app_id in app_split:
                             app_names[app_id] += 1
-                    else:
+                    if mode.lower() == 'full':
                         split = app.split(':')
                         app_id = split[0]
                         app_names[app_id] += 1
         except Exception as ex:
-            debug('Exception: {}'.format(ex), callerid='get_all_apps')
+            debug('Exception: {}'.format(ex), get_function_name())
+    debug(app_names)
     for app in stop_words:
         app_names.pop(app, None)
     debug('Finished get all app names')
     if write:
-        if split:
-            filename = cd.software_folder + APP_PART_NAMES
-        else:
-            filename = cd.software_folder + APP_FULL_NAMES
-        remove_file_if_exists(filename)
+        remove_file_if_exists(app_filename)
         texts = []
         for k, v in app_names.items():
             texts.append('{},{}'.format(k,v))
-        write_to_file_buffered(filename, texts)
+        write_to_file_buffered(app_filename, texts)
     return app_names.keys()
-
-"""
-Generating all apps names from cached file (after the first time)
-"""
-def get_all_apps_buffered(stop_words, full=False):
-    if full is False:
-        filename = cd.software_folder + APP_PART_NAMES
-    else:
-        filename = cd.software_folder + APP_FULL_NAMES
-    app_names = []
-    try:
-        with open(filename) as fr:
-            for line in fr:
-                split = line.strip().split(',')
-                try:
-                    f = int(split[1])
-                    if f > APP_F_THRESHOLD:
-                        app_names.append(split[0])
-                except:
-                    pass
-    except Exception as ex:
-        debug(ex, get_function_name())
-    return app_names
 
 ### label is put in the first column
 def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TIME_WINDOW):
@@ -639,7 +626,7 @@ if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     MODE = [
-        'Full', 'Part', 'Cat'
+        'Hybrid'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
 
     TOP_K = [
@@ -655,7 +642,7 @@ if __name__ == '__main__':
     ]   ## 'g', 'w', 'f', 'e', 'ef', 'erf', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
-        100, 200, 250, 500, 750
+        1000
     ]   ## 1, 1000, 1250, 1500, 1750, 2000
 
     ### Init sorting mechanism
@@ -668,30 +655,28 @@ if __name__ == '__main__':
 
     for mode in MODE:
         debug('Mode is : {}'.format(mode))
-        if mode.lower() == 'full' or mode.lower() == 'cat':
-            full_app_name = True
-        else:
-            full_app_name = False
 
         ### Apps categories
         categories = None
         app_cat = None
-        if mode.lower() == 'cat':
-            categories = init_categories()
-            app_cat = init_app_category()
+        if mode.lower() == 'cat' or mode.lower() == 'hybrid':
+            categories, app_cat = init_app_category(mode)
+            debug('len(categories): {}'.format(len(categories)))
+            debug('len(app_cat): {}'.format(len(app_cat)))
 
         ### Transform original input into training and testing dataset
         ## ToDo add hybrid in app_names extraction -- and then transform dataset also add hybrid
-        app_names = get_all_apps(user_ids, stop_words, write=True, split=not full_app_name, cached=True)
+        app_names = get_all_apps(user_ids, stop_words, mode, write=True, cached=True)
         debug('len(app_names): {}'.format(len(app_names)))
 
         for time in TIME_WINDOWS:
+            pass
             ### Read dataset for the experiments
             users_data = transform_dataset(user_ids, app_names, mode, write=True, categories=categories, app_cat=app_cat, cached=True, time_window=time)
             debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
 
             ### Generate testing report using machine learning evaluation
-            generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=False, time_window=time)
+            generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time)
 
             ### Top-k apps evaluation
             # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=True, time_window=time)
