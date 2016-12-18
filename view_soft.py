@@ -40,8 +40,8 @@ STOP_FILENAME           = 'stop_app.txt'
 APP_NAME_LIST           = 'app_{}.csv'
 
 ### Intermediate binary file
-USERS_DATA_NAME         = 'users_{}_data{}.bin'                             ## [Mode] [Time Window]
-APP_STATS_NAME          = 'acts_stats_{}_{}_SORT[{}]_WEIGHT[{}]_{}_{}.bin'  ### [Mode] [UID] [Sorting Mode] [Weighting Mode] [Counter] [Length]
+USERS_DATA_NAME         = 'users_data_{}_{}_{}.bin'                         ## [Mode] [UID] [Time Window]
+APP_STATS_NAME          = 'acts_stats_{}_{}_SORT[{}]_WEIGHT[{}]_{}_{}.bin'  ## [Mode] [UID] [Sorting Mode] [Weighting Mode] [Counter] [Length]
 
 ### Software dataset and intermediate
 SOFT_FORMAT             = '{}/{}_soft.csv'                                  ## Original app data    [Directory] [UID]
@@ -105,125 +105,109 @@ def init_sorting_schemes():
 Generating dataset from raw file for the first time
 """
 def transform_dataset(user_ids, app_names, mode, write=False, categories=None, app_cat=None, cached=False, time_window=0):
-    time_str = ''
-    if time_window > 0:
-        time_str = '_' + str(time_window)
-    binary_filename = USERS_DATA_NAME.format(mode, time_str)
-    ### Cached
-    if cached:
-        debug('Started reading dataset from file')
-        users_data = {}
-        try:
-            with open(cd.software_folder + binary_filename, 'rb') as f:
-                users_data = pickle.load(f)
-        except:
-            pass
-        debug('Finished reading dataset from file')
-        if len(users_data) > 0:
-            return users_data
     ### If not cached
     remove_digits = str.maketrans('', '', digits)
     users_data = {}
     ctr_uid = 0
-    agg_filename = SOFT_PROCESSED.format(cd.software_folder, 'ALL', mode, time_window)
-    remove_file_if_exists(agg_filename)
     for uid in user_ids:
         ctr_uid += 1
         lines = []
-        user_data = []
-        users_data[uid] = user_data
         filename = SOFT_FORMAT.format(cd.dataset_folder, uid)
-        ctr = 0
-        num_lines = sum(1 for line in open(filename))
-        with open(filename) as fr:
-            debug('Transforming : {} [{}/{}]'.format(filename, ctr_uid, len(user_ids)), callerid=get_function_name(), out_file=True)
-            time = 0
-            previous_time = 0
-            app_dist = []
-            if categories is None:
-                for i in range(len(app_names)):
-                    app_dist.append(0)
-            else:
-                for i in range(len(categories)):
-                    app_dist.append(0)
-            for line in fr:
-                split = line.lower().strip().split(',')
-                uid = int(split[0])
-                act = split[1]
-                app = split[2]
-                time = int(split[3])    # in ms
-                act_int = activity_to_int(act, var.activities)
-                # print(act_int)
-                date = datetime.fromtimestamp(time / 1e3)
-                if mode.lower() == 'cat' or mode.lower() == 'hybrid':
-                    cat = app_cat.get(app.strip())
-                    if cat is not None:
+        debug('Transforming : {} [{}/{}]'.format(filename, ctr_uid, len(user_ids)), callerid=get_function_name(), out_file=True)
+        ### Load cache
+        user_data = None
+        binary_filename = USERS_DATA_NAME.format(mode, uid, time_window)
+        try:
+            with open(cd.soft_users_cache + binary_filename, 'rb') as f:
+                user_data = pickle.load(f)
+                users_data[uid] = user_data
+                debug('Cache file loaded: {}'.format(cd.soft_users_cache + binary_filename))
+        except Exception as ex:
+            # debug(ex, get_function_name())
+            debug('Cache file not found: {}'.format(cd.soft_users_cache + binary_filename))
+        if user_data is None:
+            ctr = 0
+            num_lines = sum(1 for line in open(filename))
+            user_data = []
+            users_data[uid] = user_data
+            with open(filename) as fr:
+                time = 0
+                previous_time = 0
+                app_dist = []
+                if mode.lower() == 'full' or mode.lower() == 'part':
+                    for i in range(len(app_names)):
+                        app_dist.append(0)
+                elif mode.lower() == 'cat' or mode.lower() == 'hybrid':
+                    for i in range(len(categories)):
+                        app_dist.append(0)
+                for line in fr:
+                    split = line.lower().strip().split(',')
+                    uid = int(split[0])
+                    act = split[1]
+                    app = split[2]
+                    time = int(split[3])    # in ms
+                    act_int = activity_to_int(act, var.activities)
+                    # print(act_int)
+                    date = datetime.fromtimestamp(time / 1e3)
+                    if mode.lower() == 'cat' or mode.lower() == 'hybrid':
+                        cat = app_cat.get(app.strip())
+                        if cat is not None:
+                            try:
+                                app_dist[cat] = 1
+                            except Exception as ex:
+                                debug(cat)
+                                debug(ex, get_function_name())
+                    elif mode.lower() == 'full':
                         try:
-                            app_dist[cat] = 1
-                        except Exception as ex:
-                            debug(cat)
-                            debug(ex, get_function_name())
-                elif mode.lower() == 'full':
-                    try:
-                        idx = app_names.index(app)
-                        if idx != -1:
-                            app_dist[idx] = 1
-                    except:
-                        ### Because some app names are deleted to save resources
-                        pass
-                elif mode.lower() == 'part':
-                    app_split = app.translate(remove_digits).replace(':','.').split('.')
-                    for app_id in app_split:
-                        try:
-                            idx = app_names.index(app_id)
+                            idx = app_names.index(app)
                             if idx != -1:
                                 app_dist[idx] = 1
                         except:
                             ### Because some app names are deleted to save resources
                             pass
-                if abs(time - previous_time) >= time_window or ctr == num_lines-1:
-                    if sum(app_dist) > 0:
-                        soft = (','.join(str(x) for x in app_dist))
-                        text = '{},{},{}'.format(uid, act_int, soft)
-                        lines.append(text)
-                        ### label is put in the first column
-                        data = []
-                        data.append(uid)
-                        data.append(time)
-                        data.append(act_int)
-                        data.extend(app_dist)
-                        user_data.append(data)
-                        # debug(data)
-                        ## Reset app distributions
-                        app_dist = []
-                        if categories is None:
-                            for i in range(len(app_names)):
-                                app_dist.append(0)
-                        else:
-                            for i in range(len(categories)):
-                                app_dist.append(0)
-                ### Finally update the previous time to match current time
-                previous_time = time
+                    elif mode.lower() == 'part':
+                        app_split = app.translate(remove_digits).replace(':','.').split('.')
+                        for app_id in app_split:
+                            try:
+                                idx = app_names.index(app_id)
+                                if idx != -1:
+                                    app_dist[idx] = 1
+                            except:
+                                ### Because some app names are deleted to save resources
+                                pass
+                    if abs(time - previous_time) >= time_window or ctr == num_lines-1:
+                        if sum(app_dist) > 0:
+                            # soft = (','.join(str(x) for x in app_dist))
+                            # text = '{},{},{}'.format(uid, act_int, soft)
+                            # lines.append(text)
+                            ### label is put in the first column
+                            data = []
+                            data.append(uid)
+                            data.append(time)
+                            data.append(act_int)
+                            data.extend(app_dist)
+                            user_data.append(data)
+                            # debug(data)
+                            ## Reset app distributions
+                            app_dist = []
+                            if categories is None:
+                                for i in range(len(app_names)):
+                                    app_dist.append(0)
+                            else:
+                                for i in range(len(categories)):
+                                    app_dist.append(0)
+                    ### Finally update the previous time to match current time
+                    previous_time = time
 
-                ctr += 1
-                # if ctr % 100000 == 0:
-                #     debug('Processing {:,} lines'.format(ctr), out_file=True)
-            debug('len(texts): {}'.format(len(lines)))
-            debug('len(file) : {}'.format(ctr))
+                    ctr += 1
+                    # if ctr % 100000 == 0:
+                    #     debug('Processing {:,} lines'.format(ctr), out_file=True)
+                debug('len(file) : {}'.format(ctr))
+            debug('Started writing all app and users data into binary files', out_file=True)
             if write:
-                ### Write to each user's file
-                agg_filename = SOFT_PROCESSED.format(cd.software_folder, uid, mode, time_window)
-                remove_file_if_exists(filename)
-                ### Write each user's file
-                write_to_file_buffered(filename, lines, buffer_size=1000)
-                ### Write to aggregated file
-                write_to_file_buffered(agg_filename, lines, buffer_size=1000)
-                del lines[:]
-    debug('Started writing all app and users data into binary files', out_file=True)
-    if write:
-        with open(cd.software_folder + binary_filename, 'wb') as f:
-            pickle.dump(users_data, f)
-    debug('Finished writing all app and users data into binary files', out_file=True)
+                with open(cd.soft_users_cache + binary_filename, 'wb') as f:
+                    pickle.dump(user_data, f)
+            debug('Finished writing all app and users data into binary files', out_file=True)
     return users_data
 
 """
@@ -341,7 +325,7 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
                 groups.append(ctr_uid)
     if agg:
         uid = 'ALL'
-        result = testing(dataset, uid, mode=mode, cached=cached, groups=groups)
+        result = testing(dataset, uid, mode=mode, cached=cached, groups=groups, time_window=time_window)
         if result is not None:
             output.extend(result)
     if clear_data:
@@ -626,7 +610,7 @@ if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     MODE = [
-        'Hybrid'
+        'Full', 'Part', 'Cat', 'Hybrid'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
 
     TOP_K = [
@@ -642,8 +626,8 @@ if __name__ == '__main__':
     ]   ## 'g', 'w', 'f', 'e', 'ef', 'erf', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
-        1000
-    ]   ## 1, 1000, 1250, 1500, 1750, 2000
+        500, 1000
+    ]   ## 0, 1, 100, 200, 250, 500, 750, 1000, 1250, 1500, 1750, 2000
 
     ### Init sorting mechanism
     sorting = init_sorting_schemes()
@@ -670,7 +654,7 @@ if __name__ == '__main__':
         debug('len(app_names): {}'.format(len(app_names)))
 
         for time in TIME_WINDOWS:
-            pass
+            debug('Time window: {}'.format(time))
             ### Read dataset for the experiments
             users_data = transform_dataset(user_ids, app_names, mode, write=True, categories=categories, app_cat=app_cat, cached=True, time_window=time)
             debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
@@ -681,6 +665,8 @@ if __name__ == '__main__':
             ### Top-k apps evaluation
             # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=True, time_window=time)
 
+            ### Clean memory
+            users_data.clear()
         ### Extract time of each apps
         # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
         # ### Global timeline
