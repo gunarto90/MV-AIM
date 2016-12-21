@@ -19,6 +19,7 @@ import os
 import json
 import pickle
 import operator
+import psutil
 
 import numpy as np
 np.seterr(divide='ignore', invalid='ignore')    ### Remove warning from divide by zero and nan
@@ -90,6 +91,8 @@ def init_app_category(mode):
             else:
                 categories[cat_id] = cat_name
             app_cat[app_name] = cat_id
+    # for app_name, cat_id in app_cat.items():
+    #     debug('{},{}'.format(app_name, cat_id), clean=True)
     return categories, app_cat
 
 def init_sorting_schemes():
@@ -155,7 +158,7 @@ def transform_dataset(user_ids, app_names, mode, write=False, categories=None, a
                             try:
                                 app_dist[cat] = 1
                             except Exception as ex:
-                                debug(cat)
+                                debug('Category: {}, len(app_dist): {}, cat: {}'.format(cat, len(app_dist), app.strip()))
                                 debug(ex, get_function_name())
                     elif mode.lower() == 'full':
                         try:
@@ -292,6 +295,9 @@ def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TI
             time_test = output['time_test']
             text = '{},{},{},{},{},{},{}'.format(uid, name, acc, time_train, time_test, mode, time_window)
             texts.append(text)
+        # Clear memory
+        X = None
+        y = None
         return texts
     except Exception as ex:
         debug('Error on testing', ex)
@@ -313,6 +319,7 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
         ctr_uid += 1
         debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(users_data)), out_file=True)
         debug('#Rows: {}'.format(len(data)), out_file=True)
+        debug(psutil.virtual_memory())
         if uid not in user_ids:
             continue
         if not agg:
@@ -340,6 +347,7 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
     filename = REPORT_NAME.format(cd.soft_report, agg_name, mode, time_window, date.today())
     remove_file_if_exists(filename)
     write_to_file_buffered(filename, output)
+    output = None
     # debug(output)
 
 def extract_time_data(user_ids, mode, app_cat=None, cached=False):
@@ -353,6 +361,7 @@ def extract_time_data(user_ids, mode, app_cat=None, cached=False):
             ctr_uid += 1
             with open(SOFT_FORMAT.format(cd.dataset_folder, uid)) as f:
                 debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(user_ids)))
+                debug(psutil.virtual_memory(), out_file=True)
                 for line in f:
                     split = line.lower().strip().split(',')
                     act = split[1]
@@ -371,9 +380,13 @@ def extract_time_data(user_ids, mode, app_cat=None, cached=False):
                     for app in data:
                         found = global_timeline.get(app)
                         if found is None:
-                            found = []
-                        found.append(time)
-                        global_timeline[app] = found
+                            found_time = []
+                            found_act = []
+                            found = (found_time, found_act)
+                        (found_time, found_act) = found
+                        found_time.append(time)
+                        found_act.append(act_int)
+                        global_timeline[app] = (found_time, found_act)
                         ### Personal app records
                         found = personal_timeline.get(uid)
                         if found is None:
@@ -381,9 +394,13 @@ def extract_time_data(user_ids, mode, app_cat=None, cached=False):
                         personal_timeline[uid] = found
                         found2 = found.get(app)
                         if found2 is None:
-                            found2 = []
-                        found2.append(time)
-                        found[app] = found2
+                            found_time = []
+                            found_act = []
+                            found2 = (found_time, found_act)
+                        (found_time, found_act) = found2
+                        found_time.append(time)
+                        found_act.append(act_int)
+                        found[app] = (found_time, found_act)
         debug('Writing to file : {}'.format(global_filename))
         with open(cd.software_folder + global_filename, 'wb') as f:
             pickle.dump(global_timeline, f)
@@ -570,9 +587,14 @@ def evaluate_topk_apps_various(users_data, user_ids, mode, TOPK, sorting, SORT_M
     text = 'UID,Mode,Topk,Sort,Weight,TimeWindow,Acc,Train,Test'
     write_to_file(filename, text)
     for topk in TOP_K:
-        for sort in SORTS:
-            for weight in WEIGHTS:
-                evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=sort, weight_mode=weight, app_names=app_names, categories=categories, cached=cached, single=single, time_window=time_window)
+        for weight in WEIGHTS:
+            counter = 0
+            for sort in SORTS:
+                if weight == 'g' and counter > 0:
+                    ### No need to repeat different sorting for general
+                    continue
+                    evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=sort, weight_mode=weight, app_names=app_names, categories=categories, cached=cached, single=single, time_window=time_window)
+                counter += 1
 
 def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFAULT_SORTING, weight_mode=DEFAULT_WEIGHTING, app_names=None, categories=None, cached=True, single=True, time_window=DEFAULT_TIME_WINDOW):
     ctr_uid = 0
@@ -610,7 +632,7 @@ if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     MODE = [
-        'Full', 'Part', 'Cat', 'Hybrid'
+        'Cat'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
 
     TOP_K = [
@@ -623,10 +645,10 @@ if __name__ == '__main__':
 
     WEIGHTS = [
         'wef'
-    ]   ## 'g', 'w', 'f', 'e', 'ef', 'erf', 'we', 'wef', 'werf'
+    ]   ## 'g', 'w', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
-        500, 1000
+        1000
     ]   ## 0, 1, 100, 200, 250, 500, 750, 1000, 1250, 1500, 1750, 2000
 
     ### Init sorting mechanism
@@ -655,20 +677,26 @@ if __name__ == '__main__':
 
         for time in TIME_WINDOWS:
             debug('Time window: {}'.format(time))
+            debug(psutil.virtual_memory(), out_file=True)
             ### Read dataset for the experiments
-            users_data = transform_dataset(user_ids, app_names, mode, write=True, categories=categories, app_cat=app_cat, cached=True, time_window=time)
+            users_data = transform_dataset(user_ids, app_names, mode, write=True, categories=categories, app_cat=app_cat, cached=False, time_window=time)
             debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+            debug(psutil.virtual_memory(), out_file=True)
 
             ### Generate testing report using machine learning evaluation
-            generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time)
+            # generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=False, agg=False, time_window=time)
+            # debug(psutil.virtual_memory(), out_file=True)
 
             ### Top-k apps evaluation
-            # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=True, time_window=time)
+            # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=True, single=True, time_window=time)
 
             ### Clean memory
+            debug('Clearing memory', out_file=True)
             users_data.clear()
+            debug(psutil.virtual_memory(), out_file=True)
         ### Extract time of each apps
-        # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
+        global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=False)
+        debug(psutil.virtual_memory(), out_file=True)
         # ### Global timeline
         # time_of_day, day_of_week, time_of_week = time_slots_extraction(global_timeline)
         # timeline_report(mode, 'GLOBAL', categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
