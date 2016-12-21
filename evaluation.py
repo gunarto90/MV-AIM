@@ -13,14 +13,14 @@ from view_soft import extract_app_statistics, select_top_k_apps
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from sklearn.metrics import roc_curve, auc
 
-from sklearn.model_selection import LeaveOneGroupOut
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, LeaveOneGroupOut, KFold
 
 from sklearn.svm import SVC, LinearSVC
 from sklearn.ensemble import RandomForestClassifier, IsolationForest, ExtraTreesClassifier
 from sklearn.ensemble import GradientBoostingClassifier, AdaBoostClassifier, BaggingClassifier
 from sklearn.naive_bayes import GaussianNB, BernoulliNB, MultinomialNB
-from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier, export_graphviz
+from sklearn.decomposition import PCA, SparsePCA
 
 from scipy import interp
 from math import sqrt
@@ -31,39 +31,40 @@ import scipy
 import pickle
 import random
 
-MODEL_FILENAME = '{}_{}_{}_{}_{}_{}.bin'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW]
+MODEL_FILENAME = '{}_{}_{}_{}_{}_{}_{}_{}.bin'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
 
 def classifier_list():
     clfs = {}
     ### Forests
-    clfs['rfg']     = RandomForestClassifier(n_jobs=4, criterion='gini')
-    clfs['rfe']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
-    clfs['etr']     = ExtraTreesClassifier()
+    # clfs['rfg']     = RandomForestClassifier(n_jobs=4, criterion='gini')
+    # clfs['rfe']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
+    # clfs['etr']     = ExtraTreesClassifier()
     ### Boosting
     # clfs['gbc']     = GradientBoostingClassifier()
     # clfs['ada']     = AdaBoostClassifier()
     # clfs['bag']     = BaggingClassifier()
     ### SVM
-    clfs['lsvm']    = LinearSVC()
+    # clfs['lsvm']    = LinearSVC()
     # clfs['qsvm']    = SVC(probability=True, kernel='poly', degree=2)  # Slow
     # clfs['psvm']    = SVC(probability=True, kernel='poly', degree=3)  # Slow
     # clfs['ssvm']    = SVC(probability=True, kernel='sigmoid')         # Slow
     # clfs['rsvm']    = SVC(probability=True, kernel='rbf')             # Slow
     ### Naive Bayes
     # clfs['gnb']     = GaussianNB()      # Worst
-    clfs['nbb']     = BernoulliNB()     # Good
-    clfs['nbm']     = MultinomialNB()   # Best
+    # clfs['nbb']     = BernoulliNB()     # Good
+    # clfs['nbm']     = MultinomialNB()   # Best    # Can't handle negatives
     # ### Decision Tree (CART)
-    clfs['dtg']     = DecisionTreeClassifier(criterion='gini')
+    # clfs['dtg']     = DecisionTreeClassifier(criterion='gini')
     clfs['dte']     = DecisionTreeClassifier(criterion='entropy')
-    clfs['etg']     = ExtraTreeClassifier(criterion='gini')
-    clfs['ete']     = ExtraTreeClassifier(criterion='entropy')
+    # clfs['etg']     = ExtraTreeClassifier(criterion='gini')
+    # clfs['ete']     = ExtraTreeClassifier(criterion='entropy')
     return clfs
 
 def get_cv(k_fold, groups, X, y):
     if groups is None:
         ### Personal CV
-        skf  = StratifiedKFold(n_splits=k_fold, shuffle=True)
+        skf  = StratifiedKFold(n_splits=k_fold, shuffle=True, random_state=int(len(X)/2))
+        # skf  = KFold(n_splits=k_fold, shuffle=True, random_state=int(len(X)/2))
         n_split = skf.get_n_splits(X, y)
         cv = skf.split(X, y)
     else:
@@ -73,12 +74,25 @@ def get_cv(k_fold, groups, X, y):
         cv = logo.split(X, y, groups=groups)
     return cv, n_split
 
+def matrix_decomposition(X, y, sparse=False):
+    n_components = 20
+    svd_solver = 'full'
+    # svd_solver = 'randomized'     # A randomized algorithm for the decomposition of matrices
+    if sparse:
+        pca = SparsePCA(n_components=n_components, svd_solver=svd_solver)
+    else:
+        # M. Tipping and C. Bishop, Probabilistic Principal Component Analysis, Journal of the Royal Statistical Society, Series B, 61, Part 3, pp. 611-622 (Default)
+        pca = PCA(n_components=n_components, svd_solver=svd_solver)
+        # pca = PCA(n_components='mle', svd_solver='full')
+        # Thomas P. Minka: Automatic Choice of Dimensionality for PCA. NIPS 2000: 598-604
+    return pca.fit_transform(X, y)
+
 """
 X: training dataset (features)
 y: testing dataset  (label)
 clf: classifier
 """
-def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0):
+def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0, pca=False, time_info=False):
     output = {}
     i = 0
     train_time = 0.0
@@ -86,15 +100,29 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
     mean_acc = 0.0
     total_ytrue = sum(y)
 
+    str_pca = ''
+    str_timeinfo = ''
+
+    if pca:
+        str_pca = 'PCA'
+        X = matrix_decomposition(X, y, False)
+    if time_info:
+        str_timeinfo = 'TimeInfo'
+
+    # debug(X)
+    # debug(y)
+
     cv, n_split = get_cv(k_fold, groups, X, y)
 
     debug('Cross validation : {} times'.format(n_split))
     for (train, test) in cv:
+        # debug((X[train]))
+        # debug((X[test]))
         uid = info.get('uid')
         clf_name = info.get('clf_name')
         filename = None
         if uid is not None and clf_name is not None:
-            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window)
+            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo)
 
         success = True
         load = False
@@ -108,14 +136,22 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
                     load = True
             except:
                 success = False
-        if not cached or not success:
-            fit = clf.fit(X[train], y[train])
+        try:
+            if not cached or not success:
+                fit = clf.fit(X[train], y[train])
+        except Exception as ex:
+            debug(ex, get_function_name())
         train_time += (time.time() - query_time)
         # probas_ = fit.predict_proba(X[test])
         query_time = time.time()
         inference = fit.predict(X[test])
         test_time += (time.time() - query_time)
         acc = accuracy_score(y[test], inference)
+
+        if clf_name == 'dte' or clf_name == 'dtg':
+            export_graphviz(clf, out_file=cd.soft_classifier + filename + '.dot')
+            # str_tree = export_graphviz(clf, out_file=None)
+            # debug(str_tree)
 
         try:
             if filename is not None and not load:
