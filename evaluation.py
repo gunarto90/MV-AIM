@@ -36,8 +36,8 @@ MODEL_FILENAME = '{}_{}_{}_{}_{}_{}.bin'  # [uid] [clf_name] [#iter] [#total] [m
 def classifier_list():
     clfs = {}
     ### Forests
-    clfs['grf']     = RandomForestClassifier(n_jobs=4, criterion='gini')
-    clfs['erf']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
+    clfs['rfg']     = RandomForestClassifier(n_jobs=4, criterion='gini')
+    clfs['rfe']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
     clfs['etr']     = ExtraTreesClassifier()
     ### Boosting
     # clfs['gbc']     = GradientBoostingClassifier()
@@ -51,13 +51,13 @@ def classifier_list():
     # clfs['rsvm']    = SVC(probability=True, kernel='rbf')             # Slow
     ### Naive Bayes
     # clfs['gnb']     = GaussianNB()      # Worst
-    clfs['bnb']     = BernoulliNB()     # Good
-    clfs['mnb']     = MultinomialNB()   # Best
+    clfs['nbb']     = BernoulliNB()     # Good
+    clfs['nbm']     = MultinomialNB()   # Best
     # ### Decision Tree (CART)
-    clfs['gdt']     = DecisionTreeClassifier(criterion='gini')
-    clfs['edt']     = DecisionTreeClassifier(criterion='entropy')
-    clfs['egt']     = ExtraTreeClassifier(criterion='gini')
-    clfs['eet']     = ExtraTreeClassifier(criterion='entropy')
+    clfs['dtg']     = DecisionTreeClassifier(criterion='gini')
+    clfs['dte']     = DecisionTreeClassifier(criterion='entropy')
+    clfs['etg']     = ExtraTreeClassifier(criterion='gini')
+    clfs['ete']     = ExtraTreeClassifier(criterion='entropy')
     return clfs
 
 def get_cv(k_fold, groups, X, y):
@@ -125,6 +125,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         except Exception as ex:
             debug(ex, get_function_name())
         mean_acc += acc
+        fit = None
         i += 1
 
     mean_acc /= n_split
