@@ -50,7 +50,7 @@ SOFT_PROCESSED          = '{}/{}_soft_{}_{}.csv'                            ## P
 
 ### Reports
 REPORT_NAME             = '{}/soft_report_{}_{}_{}_{}_{}_{}.csv'            ## [Directory] [agg/single] [Mode] [Time Window] [PCA] [TimeInfo] [Today]
-REPORT_TOPK_NAME        = 'soft_report_topk_{}_{}_{}_{}.csv'                ## [single/agg] [full/part/cat] [Time Window] [Today]
+REPORT_TOPK_NAME        = 'soft_report_topk_{}_{}_{}_{}{}.csv'                ## [single/agg] [full/part/cat] [Time Window] [(None)/_Time] [Today]
 
 REPORT_TOD_NAME         = '{}/soft_report_tod_{}_{}.csv'                    ## [Directory] [Mode] [UID]
 REPORT_DOW_NAME         = '{}/soft_report_dow_{}_{}.csv'                    ## [Directory] [Mode] [UID]
@@ -298,7 +298,10 @@ def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TI
         # debug(dataset.shape)
         # debug(dataset[0])
         ncol = dataset.shape[1]
-        X = dataset[:,3:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
+        base_col = 3
+        if time_info:
+            base_col += 3
+        X = dataset[:,base_col:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
         y = dataset[:,2]
         texts = []
         info = {}
@@ -649,7 +652,8 @@ def extract_app_statistics(X, y, mode, uid, sort_mode, weight_mode, app_names=No
             f_dict = {}
             for j in range(len(fx)):
                 if fx[j] > 0:
-                    name = names[j]
+                    # name = names[j]
+                    name = j
                     f_dict[name] = fx[j]
             frequencies.append(f_dict)
         ### Extract entropies
@@ -662,14 +666,16 @@ def extract_app_statistics(X, y, mode, uid, sort_mode, weight_mode, app_names=No
         fds = np.transpose(fds)
         for i in range(len(fds)):
             e = entropy(fds[i], len(fds[i]))
-            name = names[i]
+            # name = names[i]
+            name = i
             entropies[name] = e
         ### Build the "acts_app"
         for i in range(len(var.activities)):
             act_dict = {}
             acts_app.append(act_dict)
             for j in range(len(names)):
-                name = names[j]
+                # name = names[j]
+                name = j
                 f = frequencies[i].get(name)
                 e = entropies.get(name)
                 if f is None:
@@ -699,14 +705,18 @@ def select_top_k_apps(top_k, acts_app, sorting, sort_mode=DEFAULT_SORTING):
         top_k_apps[i] = top
     return top_k_apps
 
-def evaluate_topk_apps_various(users_data, user_ids, mode, TOPK, sorting, SORT_MODES, WEIGHT_MODES, app_names=None, categories=None, cached=True, single=True, time_window=DEFAULT_TIME_WINDOW):
+def evaluate_topk_apps_various(users_data, user_ids, mode, TOPK, sorting, SORT_MODES, WEIGHT_MODES, app_names=None, categories=None, cached=True, single=True, time_window=DEFAULT_TIME_WINDOW, time_info=False):
     if single:
         agg_type = 'single'
     else:
         agg_type = 'agg'
-    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, time_window, date.today())
+    if time_info:
+        time_name = '_Time_'
+    else:
+        time_name = ''
+    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, time_window, time_name, date.today())
     remove_file_if_exists(filename)
-    text = 'UID,Mode,Topk,Sort,Weight,TimeWindow,Acc,Train,Test'
+    text = 'UID,Mode,Topk,Sort,Weight,TimeWindow,Acc,Train,Test,TimeInfo'
     write_to_file(filename, text)
     for topk in TOP_K:
         for weight in WEIGHTS:
@@ -714,13 +724,20 @@ def evaluate_topk_apps_various(users_data, user_ids, mode, TOPK, sorting, SORT_M
             for sort in SORTS:
                 if weight == 'g' and counter > 0:
                     ### No need to repeat different sorting for general
+                    debug('No repeat for general weighting')
                     continue
-                    evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=sort, weight_mode=weight, app_names=app_names, categories=categories, cached=cached, single=single, time_window=time_window)
+                debug('topk: {}, weight: {}, sort: {}'.format(topk, weight, sort), out_file=True)
+                debug(psutil.virtual_memory(), out_file=True)
+                evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=sort, weight_mode=weight, app_names=app_names, categories=categories, cached=cached, single=single, time_window=time_window, time_info=time_info)
                 counter += 1
 
-def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFAULT_SORTING, weight_mode=DEFAULT_WEIGHTING, app_names=None, categories=None, cached=True, single=True, time_window=DEFAULT_TIME_WINDOW):
+def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFAULT_SORTING, weight_mode=DEFAULT_WEIGHTING, app_names=None, categories=None, cached=True, single=True, time_window=DEFAULT_TIME_WINDOW, time_info=False):
     ctr_uid = 0
     texts = []
+    if time_info:
+        time_name = '_Time_'
+    else:
+        time_name = ''
     if single:
         agg_type = 'single'
         for uid, data in users_data.items():
@@ -730,8 +747,8 @@ def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFA
             debug('#Rows: {}'.format(len(data)), out_file=True)
             if uid not in user_ids:
                 continue
-            output = soft_evaluation(data, uid, mode, topk, sorting, sort_mode=sort_mode, weight_mode=weight_mode, app_names=app_names, categories=categories, cached=cached)
-            texts.append('{},{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, time_window, output['acc'], output['time_train'], output['time_test']))
+            output = soft_evaluation(data, uid, mode, topk, sorting, sort_mode=sort_mode, weight_mode=weight_mode, app_names=app_names, categories=categories, cached=cached, time_info=time_info)
+            texts.append('{},{},{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, time_window, output['acc'], output['time_train'], output['time_test'], time_info))
     else:
         dataset = []
         groups  = []
@@ -744,35 +761,40 @@ def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFA
                 dataset.append(x)
                 groups.append(ctr_uid)
         uid = 'ALL'
-        output = soft_evaluation(dataset, uid, mode, topk, sorting, sort_mode=sort_mode, weight_mode=weight_mode, app_names=app_names, categories=categories, cached=cached, groups=groups)
-        texts.append('{},{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, time_window, output['acc'], output['time_train'], output['time_test']))
-    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, time_window, date.today())
+        output = soft_evaluation(dataset, uid, mode, topk, sorting, sort_mode=sort_mode, weight_mode=weight_mode, app_names=app_names, categories=categories, cached=cached, groups=groups, time_info=time_info)
+        texts.append('{},{},{},{},{},{},{},{},{},{}'.format(uid, mode, topk, sort_mode, weight_mode, time_window, output['acc'], output['time_train'], output['time_test'], time_info))
+    filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, time_window, time_name, date.today())
     write_to_file_buffered(filename, texts)
 
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
-    Time_Info = [False, True]
-    PCA = [True, False]
+    Time_Info = [
+        False
+        # False, True
+    ]
+    PCA = [
+        True, False
+    ]
     MODE = [
-        'Full', 'Part', 'Cat', 'Hybrid'
+        'Hybrid'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
 
     TOP_K = [
-        10
+        5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
     ]   ## 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
 
     SORTS = [
-        'ef'
+        'f', 'ef', 'erf'
     ]   ## 'f', 'ef', 'erf'
 
     WEIGHTS = [
-        'wef'
+        'g', 'w', 'we', 'wef', 'werf'
     ]   ## 'g', 'w', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
-        0, 1, 100, 200, 250, 500, 750, 1000, 1250, 1500, 1750, 2000
+        1000
     ]   ## 0, 1, 100, 200, 250, 500, 750, 1000, 1250, 1500, 1750, 2000
 
     ### Init sorting mechanism
@@ -784,43 +806,43 @@ if __name__ == '__main__':
     stop_words = init_stop_words(STOP_FILENAME)
 
     for mode in MODE:
-        for time_info in Time_Info:
-            debug('Mode is : {}'.format(mode))
+        debug('Mode is : {}'.format(mode))
+        ### Apps categories
+        categories = None
+        app_cat = None
+        if mode.lower() == 'cat' or mode.lower() == 'hybrid':
+            categories, app_cat = init_app_category(mode)
+            debug('len(categories): {}'.format(len(categories)))
+            debug('len(app_cat): {}'.format(len(app_cat)))
 
-            ### Apps categories
-            categories = None
-            app_cat = None
-            if mode.lower() == 'cat' or mode.lower() == 'hybrid':
-                categories, app_cat = init_app_category(mode)
-                debug('len(categories): {}'.format(len(categories)))
-                debug('len(app_cat): {}'.format(len(app_cat)))
+        ### Transform original input into training and testing dataset
+        ## ToDo add hybrid in app_names extraction -- and then transform dataset also add hybrid
+        app_names = get_all_apps(user_ids, stop_words, mode, write=True, cached=True)
+        debug('len(app_names): {}'.format(len(app_names)))
 
-            ### Transform original input into training and testing dataset
-            ## ToDo add hybrid in app_names extraction -- and then transform dataset also add hybrid
-            app_names = get_all_apps(user_ids, stop_words, mode, write=True, cached=True)
-            debug('len(app_names): {}'.format(len(app_names)))
-
-            for time in TIME_WINDOWS:
-                debug('Time window: {}'.format(time))
-                debug(psutil.virtual_memory(), out_file=True)
+        for time in TIME_WINDOWS:
+            debug('Time window: {}'.format(time))
+            debug(psutil.virtual_memory(), out_file=True)
+            for time_info in Time_Info:
+                debug('time_info is : {}'.format(time_info))
                 ### Read dataset for the experiments
                 users_data = transform_dataset(user_ids, app_names, mode, write=True, categories=categories, app_cat=app_cat, cached=True, time_window=time, time_info=time_info)
                 debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
                 debug(psutil.virtual_memory(), out_file=True)
 
-                for pca in PCA:
-                    pass
+                # for pca in PCA:
+                #     debug('pca is : {}'.format(pca))
                     ### Generate testing report using machine learning evaluation
                     # generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=False, agg=False, time_window=time, pca=pca, time_info=time_info)
                     # debug(psutil.virtual_memory(), out_file=True)
 
                 ### Top-k apps evaluation
-                # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=True, single=True, time_window=time)
+                evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, time_info=time_info)
 
-                ### Clean memory
-                debug('Clearing memory', out_file=True)
-                users_data.clear()
-                debug(psutil.virtual_memory(), out_file=True)
+            ### Clean memory
+            debug('Clearing memory', out_file=True)
+            users_data.clear()
+            debug(psutil.virtual_memory(), out_file=True)
         ### Extract time of each apps
         global_timeline = None
         personal_timeline = None

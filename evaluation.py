@@ -31,12 +31,15 @@ import scipy
 import pickle
 import random
 
-MODEL_FILENAME = '{}_{}_{}_{}_{}_{}_{}_{}.bin'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
+MODEL_FILENAME  = '{}_{}_{}_{}_{}_{}_{}_{}.bin'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
+
+DUMP_XY         = True
+DUMPXY_FILENAME = '{}_{}_{}_{}_{}_{}_{}_{}.txt'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
 
 def classifier_list():
     clfs = {}
     ### Forests
-    # clfs['rfg']     = RandomForestClassifier(n_jobs=4, criterion='gini')
+    clfs['rfg']     = RandomForestClassifier(n_jobs=4, criterion='gini')
     # clfs['rfe']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
     # clfs['etr']     = ExtraTreesClassifier()
     ### Boosting
@@ -161,7 +164,15 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         except Exception as ex:
             debug(ex, get_function_name())
         mean_acc += acc
+        ### Clear memory
         fit = None
+        ### Dump dataset
+        if DUMP_XY:
+            filename = DUMPXY_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo)
+            stack = np.concatenate((X, y.T), axis=1)
+            np.save(filename, stack)
+            stack = None
+        ### Increment counter
         i += 1
 
     mean_acc /= n_split
@@ -209,15 +220,20 @@ def test_soft(app_models, X, y, mode, app_names, categories, weight_mode, topk):
     correct /= len(X)
     return correct
 
-def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_names=None, categories=None, cached=True, k_fold=5, groups=None):
+def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_names=None, categories=None, cached=True, k_fold=5, groups=None, time_info=False):
     data = np.array(data)
     ncol = data.shape[1]
-    X = data[:,3:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
+    base_col = 3
+    if time_info:
+        base_col += 3
+    X = data[:,base_col:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
     y = data[:,2]
 
     # debug(data)
     # debug(X)
     # debug(y)
+
+    # debug(X.shape)
 
     train_time = 0.0
     test_time = 0.0
@@ -226,7 +242,7 @@ def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_
     cv, n_split = get_cv(k_fold, groups, X, y)
     counter = 0
     output = {}
-    if mode.lower() == 'cat':
+    if mode.lower() == 'cat' or mode.lower() == 'hybrid':
         names = list(categories.values())
     else:
         names = list(app_names)
@@ -245,7 +261,8 @@ def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_
             top = top_k_apps[i]
             if len(top) > 0:
                 for app_id, (value, rank) in top.items():
-                    idx = names.index(app_id)
+                    # idx = names.index(app_id)
+                    idx = app_id
                     if idx != -1:
                         if weight_mode == 'g':
                             score = 1.0
@@ -292,6 +309,7 @@ def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_
         #         for app_id, (value, k) in sorted(top.items(), key=lambda value: value[1][1]):   # Sort using rank
         #             debug('{} : [e:{}, f:{}, rank:{}]'.format(app_id, value['e'], value['f'], k), clean=True)
         #         print()
+
         ### Increment counter
         counter += 1
 
