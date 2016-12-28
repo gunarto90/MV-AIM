@@ -30,17 +30,21 @@ import time
 import scipy
 import pickle
 import random
+import gc
+import psutil
+
+gc.enable()
 
 MODEL_FILENAME  = '{}_{}_{}_{}_{}_{}_{}_{}.bin'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
 
-DUMP_XY         = True
+DUMP_XY         = False
 DUMPXY_FILENAME = '{}_{}_{}_{}_{}_{}_{}_{}.txt'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
 
 def classifier_list():
     clfs = {}
     ### Forests
     clfs['rfg']     = RandomForestClassifier(n_jobs=4, criterion='gini')
-    # clfs['rfe']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
+    clfs['rfe']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
     # clfs['etr']     = ExtraTreesClassifier()
     ### Boosting
     # clfs['gbc']     = GradientBoostingClassifier()
@@ -57,7 +61,7 @@ def classifier_list():
     # clfs['nbb']     = BernoulliNB()     # Good
     # clfs['nbm']     = MultinomialNB()   # Best    # Can't handle negatives
     # ### Decision Tree (CART)
-    # clfs['dtg']     = DecisionTreeClassifier(criterion='gini')
+    clfs['dtg']     = DecisionTreeClassifier(criterion='gini')
     clfs['dte']     = DecisionTreeClassifier(criterion='entropy')
     # clfs['etg']     = ExtraTreeClassifier(criterion='gini')
     # clfs['ete']     = ExtraTreeClassifier(criterion='entropy')
@@ -152,9 +156,12 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         acc = accuracy_score(y[test], inference)
 
         if clf_name == 'dte' or clf_name == 'dtg':
-            export_graphviz(clf, out_file=cd.soft_classifier + filename + '.dot')
-            # str_tree = export_graphviz(clf, out_file=None)
-            # debug(str_tree)
+            try:
+                export_graphviz(clf, out_file=cd.soft_classifier + filename + '.dot')
+                # str_tree = export_graphviz(clf, out_file=None)
+                # debug(str_tree)
+            except Exception as ex:
+                debug(ex, get_function_name())
 
         try:
             if filename is not None and not load:
@@ -164,14 +171,19 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         except Exception as ex:
             debug(ex, get_function_name())
         mean_acc += acc
+        debug('[{}] [{}] Accuracy [{} of {}] : {}'.format(uid, clf_name, i, n_split, acc))
         ### Clear memory
         fit = None
+        inference = None
+        gc.collect()
+        debug(psutil.virtual_memory())
         ### Dump dataset
-        if DUMP_XY:
-            filename = DUMPXY_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo)
-            stack = np.concatenate((X, y.T), axis=1)
-            np.save(filename, stack)
-            stack = None
+        # if DUMP_XY:
+        #     z = np.array([y])
+        #     filename = cd.soft_classifier + DUMPXY_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo)
+        #     stack = np.concatenate((X, z.T), axis=1)
+        #     np.savetxt(filename, stack, delimiter=',')
+        #     stack = None
         ### Increment counter
         i += 1
 
@@ -324,3 +336,6 @@ def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_
     debug(output)
 
     return output
+
+def soft_time_evaluation():
+    pass
