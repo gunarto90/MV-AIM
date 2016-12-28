@@ -20,6 +20,7 @@ import json
 import pickle
 import operator
 import psutil
+import gc
 
 import numpy as np
 np.seterr(divide='ignore', invalid='ignore')    ### Remove warning from divide by zero and nan
@@ -33,6 +34,8 @@ from math import sqrt
 
 from general import *
 from evaluation import *
+
+gc.enable()
 
 ### Supporting files
 CATEGORY_NAME           = 'category_lookup.csv'
@@ -775,22 +778,24 @@ if __name__ == '__main__':
         # False, True
     ]
     PCA = [
-        True, False
+        False
+        # False, True
     ]
     MODE = [
-        'Hybrid'
+        'Cat'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
 
     TOP_K = [
-        5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
+        # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
+        20
     ]   ## 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
 
     SORTS = [
-        'f', 'ef', 'erf'
+        'ef'
     ]   ## 'f', 'ef', 'erf'
 
     WEIGHTS = [
-        'g', 'w', 'we', 'wef', 'werf'
+        'we'
     ]   ## 'g', 'w', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
@@ -823,40 +828,42 @@ if __name__ == '__main__':
         for time in TIME_WINDOWS:
             debug('Time window: {}'.format(time))
             debug(psutil.virtual_memory(), out_file=True)
+            users_data = {}
             for time_info in Time_Info:
                 debug('time_info is : {}'.format(time_info))
                 ### Read dataset for the experiments
-                users_data = transform_dataset(user_ids, app_names, mode, write=True, categories=categories, app_cat=app_cat, cached=True, time_window=time, time_info=time_info)
-                debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
-                debug(psutil.virtual_memory(), out_file=True)
+                # users_data = transform_dataset(user_ids, app_names, mode, write=True, categories=categories, app_cat=app_cat, cached=True, time_window=time, time_info=time_info)
+                # debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
+                # debug(psutil.virtual_memory(), out_file=True)
 
-                # for pca in PCA:
-                #     debug('pca is : {}'.format(pca))
-                    ### Generate testing report using machine learning evaluation
-                    # generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=False, agg=False, time_window=time, pca=pca, time_info=time_info)
+                for pca in PCA:
+                    debug('pca is : {}'.format(pca))
+                    ## Generate testing report using machine learning evaluation
+                    # generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time, pca=pca, time_info=time_info)
                     # debug(psutil.virtual_memory(), out_file=True)
 
                 ### Top-k apps evaluation
-                evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, time_info=time_info)
+                # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, time_info=time_info)
 
             ### Clean memory
             debug('Clearing memory', out_file=True)
             users_data.clear()
+            gc.collect()
             debug(psutil.virtual_memory(), out_file=True)
         ### Extract time of each apps
         global_timeline = None
         personal_timeline = None
-        # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
+        global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
         # ### Global timeline
-        # time_of_day, day_of_week, time_of_week, act_time_of_day, act_day_of_week, act_time_of_week = time_slots_extraction(global_timeline, 'ALL', cached=False)
-        # debug(act_day_of_week)
+        time_of_day, day_of_week, time_of_week, act_time_of_day, act_day_of_week, act_time_of_week = time_slots_extraction(global_timeline, 'ALL', cached=False)
+        debug(act_day_of_week)
         # timeline_report(mode, 'GLOBAL', categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
         # ### Personal timeline
         for uid in user_ids:
             timeline = None
             if personal_timeline is not None:
                 timeline = personal_timeline[uid]
-            # time_of_day, day_of_week, time_of_week, act_time_of_day, act_day_of_week, act_time_of_week = time_slots_extraction(timeline, uid, cached=False)
+            time_of_day, day_of_week, time_of_week, act_time_of_day, act_day_of_week, act_time_of_week = time_slots_extraction(timeline, uid, cached=False)
             # timeline_report(mode, uid, categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
 
         ### Extract time info from cached data
