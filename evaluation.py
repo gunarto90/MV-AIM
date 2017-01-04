@@ -35,10 +35,10 @@ import psutil
 
 gc.enable()
 
-MODEL_FILENAME  = '{}_{}_{}_{}_{}_{}_{}_{}.bin'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
+MODEL_FILENAME  = '{}_{}_{}_{}_{}_{}_{}_{}{}.bin'   # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo] [(None)/fore/back]
 
 DUMP_XY         = False
-DUMPXY_FILENAME = '{}_{}_{}_{}_{}_{}_{}_{}.txt'  # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
+DUMPXY_FILENAME = '{}_{}_{}_{}_{}_{}_{}_{}.txt'     # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
 
 def classifier_list():
     clfs = {}
@@ -99,7 +99,7 @@ X: training dataset (features)
 y: testing dataset  (label)
 clf: classifier
 """
-def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0, pca=False, time_info=False):
+def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0, pca=False, time_info=False, app_type='all'):
     output = {}
     i = 0
     train_time = 0.0
@@ -109,12 +109,15 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
 
     str_pca = ''
     str_timeinfo = ''
+    str_app_type = ''
 
     if pca:
         str_pca = 'PCA'
         X = matrix_decomposition(X, y, False)
     if time_info:
         str_timeinfo = 'TimeInfo'
+    if app_type != 'all':
+        str_app_type = app_type
 
     # debug(X)
     # debug(y)
@@ -129,7 +132,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         clf_name = info.get('clf_name')
         filename = None
         if uid is not None and clf_name is not None:
-            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo)
+            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo, str_app_type)
 
         success = True
         load = False
@@ -149,6 +152,8 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         except Exception as ex:
             debug(ex, get_function_name())
         train_time += (time.time() - query_time)
+        if success:
+            debug('Model loaded from {}'.format(filename))
         # probas_ = fit.predict_proba(X[test])
         query_time = time.time()
         inference = fit.predict(X[test])
@@ -173,7 +178,6 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         mean_acc += acc
         debug('[{}] [{}] Accuracy [{} of {}] : {}'.format(uid, clf_name, i, n_split, acc))
         ### Clear memory
-        fit = None
         inference = None
         gc.collect()
         debug(psutil.virtual_memory())
@@ -186,6 +190,9 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         #     stack = None
         ### Increment counter
         i += 1
+
+    ## Clear memory
+    fit = None
 
     mean_acc /= n_split
     train_time /= n_split
@@ -232,12 +239,12 @@ def test_soft(app_models, X, y, mode, app_names, categories, weight_mode, topk):
     correct /= len(X)
     return correct
 
-def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_names=None, categories=None, cached=True, k_fold=5, groups=None, time_info=False):
+def soft_evaluation(data, uid, mode, topk, sorting, sort_mode, weight_mode, app_names=None, categories=None, cached=True, k_fold=5, groups=None):
     data = np.array(data)
     ncol = data.shape[1]
     base_col = 3
-    if time_info:
-        base_col += 3
+    # if time_info:
+    #     base_col += 3
     X = data[:,base_col:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
     y = data[:,2]
 
