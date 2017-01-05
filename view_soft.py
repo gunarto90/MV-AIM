@@ -1,16 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.12
-2016/12/08 04:34PM
-"""
-
-"""
-## ToDo !!:
-"""
-
-"""
-
+Version 1.1.0
+2017/01/05 07:09PM
 """
 import getopt
 import sys
@@ -24,7 +16,6 @@ import gc
 import random
 
 import numpy as np
-np.seterr(divide='ignore', invalid='ignore')    ### Remove warning from divide by zero and nan
 import config_directory as cd
 import config_variable as var
 
@@ -36,8 +27,10 @@ from math import sqrt
 from general import *
 from evaluation import *
 
-gc.enable()
+### General settings
+np.seterr(divide='ignore', invalid='ignore')    ### Remove warning from divide by zero and nan
 np.set_printoptions(precision=3, suppress=True)
+gc.enable()
 
 ### Supporting files
 CATEGORY_NAME           = 'category_lookup.csv'
@@ -423,10 +416,11 @@ def build_time_matrix(uid, X, y, columns, n_iter, total, cached=False):
             try:
                 with open(cache_folder + filenames[name], 'rb') as f:
                     time_app_data[name] = pickle.load(f)
+                debug('Success in reading cache file: {}'.format(cache_folder + filenames[name]))
             except:
                 success = False
         if not success:
-            build_time_matrix(uid, X, y, columns, n_iter, total, cached=False)            
+            return build_time_matrix(uid, X, y, columns, n_iter, total, cached=False)            
     else:
         time_app_data['tod'] = init_time_matrix(24)
         time_app_data['dow'] = init_time_matrix(7)        
@@ -483,6 +477,7 @@ def build_time_matrix(uid, X, y, columns, n_iter, total, cached=False):
         for name in nameset:
             with open(cache_folder + filenames[name], 'wb') as f:
                 pickle.dump(time_app_data[name], f)
+                debug('Writing the cache file: {}'.format(cache_folder + filenames[name]))
 
     return time_app_data
 
@@ -568,7 +563,7 @@ def testing_time_app(X, y, time_app_data):
 
     return scores
 
-def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=None, cached=False, time_info=False, app_type='all', k_fold=K_FOLD):
+def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=None, cached=False, time_window=DEFAULT_TIME_WINDOW, time_info=False, app_type='all', k_fold=K_FOLD):
     nameset = ['tod', 'dow', 'tow', 'atod', 'adow', 'atow']
     ctr_uid = 0
     dataset = {}
@@ -577,11 +572,11 @@ def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=Tru
         columns = app_names
     elif mode.lower() == 'cat' or mode.lower() == 'hybrid':
         columns = categories
-    report_filename = 'app_time_matrix_{}_{}_{}.csv'.format(mode, time_info, app_type)
+    report_filename = 'app_time_matrix_{}_{}_{}_{}.csv'.format(mode, time_window, time_info, app_type)
     remove_file_if_exists(cd.soft_report + report_filename)
     debug(cd.soft_report + report_filename)
     if WRITE_HEADER:
-        text = 'mode,time_info,app_type,'
+        text = 'mode,time_info,app_type,time_window,'
         text += ','.join(nameset)
         write_to_file(cd.soft_report + report_filename, text)
     if agg:
@@ -622,6 +617,7 @@ def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=Tru
         for (train, test) in cv:
             i += 1
             time_app_data = build_time_matrix(username, X[train], y[train], columns, i, n_split, cached=cached)
+            # debug(len(time_app_data))
             # debug(time_app_data['dow'])
             # for x in range(len(time_app_data['adow'])):
             #     debug(time_app_data['adow'][x], clean=True)
@@ -631,10 +627,11 @@ def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=Tru
                 if found is None:
                     found = 0
                 agg_scores[name] = found + score
-            break
+            
+            # break
         for name, score in agg_scores.items():
             agg_scores[name] = score / i
-        text = '{},{},{},'.format(mode, time_info, app_type)
+        text = '{},{},{},{},'.format(mode, time_info, app_type, time_window)
         text += ','.join(str(agg_scores[x]) for x in nameset)
         write_to_file(cd.soft_report + report_filename, text)
 
@@ -1047,6 +1044,7 @@ if __name__ == '__main__':
     APP_TYPE = [
         'fore', 'all'
     ]   ## 'fore', 'back', 'all'
+     ## 'fore', 'all'
 
     TOP_K = [
         # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
@@ -1111,7 +1109,7 @@ if __name__ == '__main__':
                 # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, app_type=app_type)
 
                 ### Apps X Time evaluation
-                extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=app_cat, cached=True, time_info=time_info, app_type=app_type, k_fold=K_FOLD)
+                extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=app_cat, cached=True, time_window=time, time_info=time_info, app_type=app_type, k_fold=K_FOLD)
 
                 ### Clean memory
                 debug('Clearing memory', out_file=True)
