@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.3
-2016/12/08 04:30PM
+Version 1.0.4
+2017/01/05 04:00PM
 """
 
 """
@@ -33,5 +33,6 @@ soft_cv_model_folder    = model_folder + SOFTWARE + CROSS_VALIDATION
 soft_statistics_folder  = model_folder + SOFTWARE + STATISTICS
 soft_classifier         = model_folder + SOFTWARE + CLASSIFIER
 soft_users_cache        = model_folder + SOFTWARE + CACHE
+soft_users_time_cache   = model_folder + SOFTWARE + CACHE + TEMPORAL
 
 soft_report             = report_folder + SOFTWARE

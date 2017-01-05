@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.5
-2016/12/08 04:30PM
+Version 1.0.6
+2017/01/05 04:00PM
 """
 import os
 import math
@@ -156,5 +156,6 @@ def init(file='users.json'):
     make_sure_path_exists(cd.soft_statistics_folder)
     make_sure_path_exists(cd.soft_classifier)
     make_sure_path_exists(cd.soft_users_cache)
+    make_sure_path_exists(cd.soft_users_time_cache)
     ### Return user ids
     return user_ids
