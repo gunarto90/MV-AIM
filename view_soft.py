@@ -21,6 +21,7 @@ import pickle
 import operator
 import psutil
 import gc
+import random
 
 import numpy as np
 np.seterr(divide='ignore', invalid='ignore')    ### Remove warning from divide by zero and nan
@@ -36,6 +37,7 @@ from general import *
 from evaluation import *
 
 gc.enable()
+np.set_printoptions(precision=3, suppress=True)
 
 ### Supporting files
 CATEGORY_NAME           = 'category_lookup.csv'
@@ -45,23 +47,23 @@ STOP_FILENAME           = 'stop_app.txt'
 APP_NAME_LIST           = 'app_{}_{}.csv' ## [full/cat/part/hybrid] [fore/back/all]
 
 ### Intermediate binary file
-USERS_DATA_NAME         = 'users_data_{}_{}_{}{}{}.bin'                      ## [Mode] [UID] [Time Window] [(None)/_Time] [None/_(fore/back)]
-APP_STATS_NAME          = 'acts_stats_{}_{}_SORT[{}]_WEIGHT[{}]_{}_{}.bin'  ## [Mode] [UID] [Sorting Mode] [Weighting Mode] [Counter] [Length]
+USERS_DATA_NAME         = 'users_data_{}_{}_{}{}{}.bin'                         ## [Mode] [UID] [Time Window] [(None)/_Time] [None/_(fore/back)]
+APP_STATS_NAME          = 'acts_stats_{}_{}_SORT[{}]_WEIGHT[{}]_{}_{}.bin'      ## [Mode] [UID] [Sorting Mode] [Weighting Mode] [Counter] [Length]
 
 ### Software dataset and intermediate
-SOFT_FORMAT             = '{}/{}_soft.csv'                                  ## Original app data    [Directory] [UID]
-SOFT_PROCESSED          = '{}/{}_soft_{}_{}.csv'                            ## Processed: part name [Directory] [UID] [Mode] [Time Window]
+SOFT_FORMAT             = '{}/{}_soft.csv'                                      ## Original app data    [Directory] [UID]
+SOFT_PROCESSED          = '{}/{}_soft_{}_{}.csv'                                ## Processed: part name [Directory] [UID] [Mode] [Time Window]
 
 ### Reports
-REPORT_NAME             = '{}/soft_report_{}_{}_{}_{}_{}_{}.csv'            ## [Directory] [agg/single] [Mode] [Time Window] [PCA] [TimeInfo] [Today]
-REPORT_TOPK_NAME        = 'soft_report_topk_{}_{}_{}_{}{}.csv'                ## [single/agg] [full/part/cat] [Time Window] [(None)/_Time] [Today]
+REPORT_NAME             = '{}/soft_report_{}_{}_{}_{}_{}_{}.csv'                ## [Directory] [agg/single] [Mode] [Time Window] [PCA] [TimeInfo] [Today]
+REPORT_TOPK_NAME        = 'soft_report_topk_{}_{}_{}_{}{}.csv'                  ## [single/agg] [full/part/cat] [Time Window] [(None)/_Time] [Today]
 
-REPORT_TOD_NAME         = '{}/soft_report_tod_{}_{}.csv'                    ## [Directory] [Mode] [UID]
-REPORT_DOW_NAME         = '{}/soft_report_dow_{}_{}.csv'                    ## [Directory] [Mode] [UID]
-REPORT_TOW_NAME         = '{}/soft_report_tow_{}_{}.csv'                    ## [Directory] [Mode] [UID]
+REPORT_TOD_NAME         = '{}/soft_report_tod_{}_{}.csv'                        ## [Directory] [Mode] [UID]
+REPORT_DOW_NAME         = '{}/soft_report_dow_{}_{}.csv'                        ## [Directory] [Mode] [UID]
+REPORT_TOW_NAME         = '{}/soft_report_tow_{}_{}.csv'                        ## [Directory] [Mode] [UID]
 
 ### Time data
-TIME_CACHE              = 'time_data_{}_{}.bin'                             ## [tod/dow/tow/atod/adow/atow] [UID]
+TIME_CACHE              = 'time_data_{}_{}_{}_{}.bin'                           ## [tod/dow/tow/atod/adow/atow] [UID] [iteration] [n_split]
 
 APP_F_THRESHOLD         = 1000  ## Minimum occurrence of the app throughout the dataset
 
@@ -73,7 +75,7 @@ DEFAULT_TIME_WINDOW     = 1000      ### in ms
 
 COLUMN_NAMES            = 'UID,Classifier,Accuracy,TrainTime(s),TestTime(s),Mode,TimeWindow,PCA,TimeInfo,AppType'
 
-WRITE_HEADER            = False
+WRITE_HEADER            = True
 
 """
 @Initialization methods
@@ -391,8 +393,250 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
     output = None
     # debug(output)
 
-def extract_time_info():
-    pass
+def init_time_matrix(slots):
+    matrix = {}
+    for i in range(slots):
+        matrix[i] = np.zeros((len(var.activities),))
+    return matrix
+
+def build_time_matrix(uid, X, y, columns, n_iter, total, cached=False):
+    nameset = ['tod', 'dow', 'tow', 'atod', 'adow', 'atow']
+    filenames = {}
+    time_app_data = {}
+
+    for name in nameset:
+        filenames[name] = TIME_CACHE.format(name, uid, n_iter, total)
+
+    tod_file = TIME_CACHE.format('tod', uid, n_iter, total)
+    dow_file = TIME_CACHE.format('dow', uid, n_iter, total)
+    tow_file = TIME_CACHE.format('tow', uid, n_iter, total)
+
+    atod_file = TIME_CACHE.format('atod', uid, n_iter, total)
+    adow_file = TIME_CACHE.format('adow', uid, n_iter, total)
+    atow_file = TIME_CACHE.format('atow', uid, n_iter, total)
+
+    cache_folder = cd.soft_users_time_cache
+
+    if cached:
+        success = True
+        for name in nameset:
+            try:
+                with open(cache_folder + filenames[name], 'rb') as f:
+                    time_app_data[name] = pickle.load(f)
+            except:
+                success = False
+        if not success:
+            build_time_matrix(uid, X, y, columns, n_iter, total, cached=False)            
+    else:
+        time_app_data['tod'] = init_time_matrix(24)
+        time_app_data['dow'] = init_time_matrix(7)        
+        time_app_data['tow'] = init_time_matrix(7*24)
+
+        time_app_data['atod'] = {}
+        time_app_data['adow'] = {}
+        time_app_data['atow'] = {}
+
+        for i in range(1, X.shape[1]):
+            time_app_data['atod'][i-1] = init_time_matrix(24)
+            time_app_data['adow'][i-1] = init_time_matrix(7)
+            time_app_data['atow'][i-1] = init_time_matrix(7*24)
+
+        for i in range(len(X)):
+            time = X[i][0]
+            act_int = y[i]
+            if not time_info:
+                date = datetime.fromtimestamp(time / 1e3)
+                day = date.weekday()
+                hour = date.hour
+                timeweek = day*24 + hour
+            else:
+                day = user_data[3]
+                hour = user_data[4]
+                timeweek = user_data[5]
+            ## Build the activity distribution among all timeslots
+            time_app_data['tod'][hour][act_int] += 1
+            time_app_data['dow'][day][act_int] += 1
+            time_app_data['tow'][timeweek][act_int] += 1
+            for j in range(1, len(X[i])):
+                if X[i][j] == 1:
+                    time_app_data['atod'][j-1][hour][act_int] += 1
+                    time_app_data['adow'][j-1][day][act_int] += 1
+                    time_app_data['atow'][j-1][timeweek][act_int] += 1
+
+        ## Normalize the value
+        for name, data in time_app_data.items():
+            if name in ['tod', 'dow', 'tow']:
+                for i, arr in data.items():
+                    total = float(sum(arr))
+                    if total > 0:
+                        for j in range(len(arr)):
+                            arr[j] = arr[j]/total
+            elif name in ['atod', 'adow', 'atow']:
+                for x in range(len(columns)):
+                    for i, arr in data[x].items():
+                        total = float(sum(arr))
+                        if total > 0:
+                            for j in range(len(arr)):
+                                arr[j] = arr[j]/total
+
+        ## Dump into file
+        for name in nameset:
+            with open(cache_folder + filenames[name], 'wb') as f:
+                pickle.dump(time_app_data[name], f)
+
+    return time_app_data
+
+def get_answer(arr):
+    max_score = max(arr)
+    inferences = []
+    for j in range(len(var.activities)):
+        if arr[j] == max_score:
+            inferences.append(j)
+    inference = random.choice(inferences)
+    return inference
+
+def testing_time_app(X, y, time_app_data):
+    scores = {}
+    for name in time_app_data:
+        scores[name] = 0.0
+    iterator = 0
+    for x in X:
+        ## Extract time info
+        date = datetime.fromtimestamp(x[0] / 1e3)
+        day = date.weekday()
+        hour = date.hour
+        timeweek = day*24 + hour
+        # debug(scores['dow'])
+        # debug(time_app_data['dow'][day])
+        ## Extract score for each method
+        tod = time_app_data['tod'][hour]
+        dow = time_app_data['dow'][day]
+        tow = time_app_data['tow'][timeweek]
+
+        # debug(tod)
+        # debug(dow)
+        # debug(tow)
+
+        answer_tod = get_answer(tod)
+        answer_dow = get_answer(dow)
+        answer_tow = get_answer(tow)
+
+        # debug(answer_tod)
+        # debug(answer_dow)
+        # debug(answer_tow)
+        # debug(y[iterator])
+
+        if answer_tod == y[iterator]:
+            scores['tod'] += 1
+        if answer_dow == y[iterator]:
+            scores['dow'] += 1
+        if answer_tow == y[iterator]:
+            scores['tow'] += 1
+
+        atod = np.zeros((len(var.activities),))
+        adow = np.zeros((len(var.activities),))
+        atow = np.zeros((len(var.activities),))
+
+        for j in range(1, len(x)):
+            if x[j] == 1:
+                atod = np.add(atod, time_app_data['atod'][j-1][hour])
+                adow = np.add(adow, time_app_data['adow'][j-1][day])
+                atow = np.add(atow, time_app_data['atow'][j-1][timeweek])
+
+        # debug(atod)
+        # debug(adow)
+        # debug(atow)
+
+        answer_atod = get_answer(atod)
+        answer_adow = get_answer(adow)
+        answer_atow = get_answer(atow)
+
+        if answer_atod == y[iterator]:
+            scores['atod'] += 1
+        if answer_adow == y[iterator]:
+            scores['adow'] += 1
+        if answer_atow == y[iterator]:
+            scores['atow'] += 1
+
+        iterator += 1
+
+    ## Normalize score
+    for name in time_app_data:
+        scores[name] /= len(y)
+
+    # debug(scores)
+
+    return scores
+
+def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=None, cached=False, time_info=False, app_type='all', k_fold=K_FOLD):
+    nameset = ['tod', 'dow', 'tow', 'atod', 'adow', 'atow']
+    ctr_uid = 0
+    dataset = {}
+    debug(mode)
+    if mode.lower() == 'full' or mode.lower() == 'part':
+        columns = app_names
+    elif mode.lower() == 'cat' or mode.lower() == 'hybrid':
+        columns = categories
+    report_filename = 'app_time_matrix_{}_{}_{}.csv'.format(mode, time_info, app_type)
+    remove_file_if_exists(cd.soft_report + report_filename)
+    debug(cd.soft_report + report_filename)
+    if WRITE_HEADER:
+        text = 'mode,time_info,app_type,'
+        text += ','.join(nameset)
+        write_to_file(cd.soft_report + report_filename, text)
+    if agg:
+        groups  = []
+        xdata = []
+        for uid, data in users_data.items():
+            ctr_uid += 1
+            if uid not in user_ids:
+                continue
+            for x in data:
+                xdata.append(x)
+                groups.append(ctr_uid)
+        dataset['all'] = xdata
+    else:
+        group = None
+        for uid, data in users_data.items():
+            ctr_uid += 1
+            if uid not in user_ids:
+                continue
+            dataset[uid] = data
+    for uid, raw in dataset.items():
+        if agg:
+            username = 'all'
+        else:
+            username = uid
+        data = np.array(raw)
+        ncol = data.shape[1]
+        base_col = 3
+        indices = []
+        indices.append(1)
+        for i in range(base_col, ncol):
+            indices.append(i)
+        X = data[:,indices]
+        y = data[:,2]
+        cv, n_split = get_cv(k_fold, groups, X, y)
+        i = 0
+        agg_scores = {}
+        for (train, test) in cv:
+            i += 1
+            time_app_data = build_time_matrix(username, X[train], y[train], columns, i, n_split, cached=cached)
+            # debug(time_app_data['dow'])
+            # for x in range(len(time_app_data['adow'])):
+            #     debug(time_app_data['adow'][x], clean=True)
+            scores = testing_time_app(X[test], y[test], time_app_data)
+            for name, score in scores.items():
+                found = agg_scores.get(name)
+                if found is None:
+                    found = 0
+                agg_scores[name] = found + score
+            break
+        for name, score in agg_scores.items():
+            agg_scores[name] = score / i
+        text = '{},{},{},'.format(mode, time_info, app_type)
+        text += ','.join(str(agg_scores[x]) for x in nameset)
+        write_to_file(cd.soft_report + report_filename, text)
 
 def extract_time_data(user_ids, mode, app_cat=None, cached=False):
     ctr_uid = 0
@@ -534,7 +778,8 @@ def time_slots_extraction(timeline, uid, cached=True):
         debug('Extract time slots: {}'.format(uid), out_file=True)
         debug(psutil.virtual_memory(), out_file=True)
 
-        for app, (time_data, act_data) in timeline.items():
+        for app, found in timeline.items():
+            (found_time, found_act) = found
             ### Init data time
             tod = []
             for i in range(24):
@@ -795,18 +1040,18 @@ if __name__ == '__main__':
         # False, True
     ]
     MODE = [
-        'Cat'
+        'Full', 'Cat'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
     ## 'Full', 'Cat'
 
     APP_TYPE = [
-        'fore'
+        'fore', 'all'
     ]   ## 'fore', 'back', 'all'
 
     TOP_K = [
         # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
         # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100
-        30
+        10, 20, 30, 40, 50, 60
     ]   ## 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100
 
     SORTS = [
@@ -859,11 +1104,14 @@ if __name__ == '__main__':
                     for pca in PCA:
                         debug('pca is : {}'.format(pca))
                         ## Generate testing report using machine learning evaluation
-                        generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time, pca=pca, time_info=time_info, app_type=app_type)
-                        debug(psutil.virtual_memory(), out_file=True)
+                        # generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time, pca=pca, time_info=time_info, app_type=app_type)
+                        # debug(psutil.virtual_memory(), out_file=True)
 
                 ### Top-k apps evaluation
                 # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, app_type=app_type)
+
+                ### Apps X Time evaluation
+                extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=app_cat, cached=True, time_info=time_info, app_type=app_type, k_fold=K_FOLD)
 
                 ### Clean memory
                 debug('Clearing memory', out_file=True)
@@ -871,18 +1119,18 @@ if __name__ == '__main__':
                 gc.collect()
                 debug(psutil.virtual_memory(), out_file=True)
             ### Extract time of each apps
-            global_timeline = None
-            personal_timeline = None
-            # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=True)
+            # global_timeline = None
+            # personal_timeline = None
+            # global_timeline, personal_timeline = extract_time_data(user_ids, mode, app_cat=app_cat, cached=False)
             # ### Global timeline
             # time_of_day, day_of_week, time_of_week, act_time_of_day, act_day_of_week, act_time_of_week = time_slots_extraction(global_timeline, 'ALL', cached=False)
             # debug(act_day_of_week)
             # timeline_report(mode, 'GLOBAL', categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
             # ### Personal timeline
-            for uid in user_ids:
-                timeline = None
-                if personal_timeline is not None:
-                    timeline = personal_timeline[uid]
+            # for uid in user_ids:
+            #     timeline = None
+            #     if personal_timeline is not None:
+            #         timeline = personal_timeline[uid]
                 # time_of_day, day_of_week, time_of_week, act_time_of_day, act_day_of_week, act_time_of_week = time_slots_extraction(timeline, uid, cached=False)
                 # timeline_report(mode, uid, categories=categories, time_of_day=time_of_day, day_of_week=day_of_week, time_of_week=time_of_week)
 
