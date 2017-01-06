@@ -49,7 +49,7 @@ SOFT_FORMAT             = '{}/{}_soft.csv'                                      
 SOFT_PROCESSED          = '{}/{}_soft_{}_{}.csv'                                ## Processed: part name [Directory] [UID] [Mode] [Time Window]
 
 ### Reports
-REPORT_NAME             = '{}/soft_report_{}_{}_{}_{}_{}_{}.csv'                ## [Directory] [agg/single] [Mode] [Time Window] [PCA] [TimeInfo] [Today]
+REPORT_NAME             = '{}/soft_report_{}_{}_{}_{}_{}_{}_{}.csv'             ## [Directory] [agg/single] [Mode] [Preprocessing] [Time Window] [PCA] [TimeInfo] [Today]
 REPORT_TOPK_NAME        = 'soft_report_topk_{}_{}_{}_{}{}.csv'                  ## [single/agg] [full/part/cat] [Time Window] [(None)/_Time] [Today]
 
 REPORT_TOD_NAME         = '{}/soft_report_tod_{}_{}.csv'                        ## [Directory] [Mode] [UID]
@@ -297,7 +297,7 @@ def get_all_apps(user_ids, stop_words, mode, app_type, write=False, cached=False
     return app_names.keys()
 
 ### label is put in the first column
-def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TIME_WINDOW, pca=False, time_info=False, app_type='all'):
+def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TIME_WINDOW, pca=False, time_info=False, app_type='all', method='original'):
     debug('Processing: {}'.format(uid))
     dataset = np.array(dataset)
     clfs = classifier_list()
@@ -316,11 +316,11 @@ def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TI
         for name, clf in clfs.items():
             debug(name)
             info['clf_name'] = name
-            output = evaluation(X, y, clf, k_fold=K_FOLD, info=info, cached=cached, mode=mode, groups=groups, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type)
+            output = evaluation(X, y, clf, k_fold=K_FOLD, info=info, cached=cached, mode=mode, groups=groups, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type, method=method)
             acc = output['acc']
             time_train = output['time_train']
             time_test = output['time_test']
-            text = '{},{},{},{},{},{},{},{},{},{}'.format(uid, name, acc, time_train, time_test, mode, time_window, pca, time_info, app_type)
+            text = '{},{},{},{},{},{},{},{},{},{},{}'.format(uid, name, acc, time_train, time_test, mode, time_window, pca, time_info, app_type, method)
             texts.append(text)
         # Clear memory
         X = None
@@ -332,7 +332,7 @@ def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TI
         return None
 
 ### Generating testing report per user
-def generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=None, cached=True, agg=False, time_window=DEFAULT_TIME_WINDOW, pca=False, time_info=False, app_type='all'):
+def generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=None, cached=True, agg=False, time_window=DEFAULT_TIME_WINDOW, pca=False, time_info=False, app_type='all', method='original'):
     # ### Test
     if not agg:
         debug('Evaluating application data (single)', out_file=True)
@@ -344,15 +344,18 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
     if WRITE_HEADER:
         output.append(COLUMN_NAMES)
     ctr_uid = 0
+    temp_file = cd.software_folder + 'temp.csv'
+    write_to_file(temp_file, 'UID,TimeWindow,#Rows')
     for uid, data in users_data.items():
         ctr_uid += 1
         debug('User: {} [{}/{}]'.format(uid, ctr_uid, len(users_data)), out_file=True)
         debug('#Rows: {}'.format(len(data)), out_file=True)
+        write_to_file(temp_file, '{},{},{}'.format(uid, time_window, len(data)))
         debug(psutil.virtual_memory())
         if uid not in user_ids:
             continue
         if not agg:
-            result = testing(data, uid, mode=mode, cached=cached, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type)
+            result = testing(data, uid, mode=mode, cached=cached, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type, method=method)
             if result is not None:
                 output.extend(result)
         else:
@@ -361,7 +364,7 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
                 groups.append(ctr_uid)
     if agg:
         uid = 'ALL'
-        result = testing(dataset, uid, mode=mode, cached=cached, groups=groups, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type)
+        result = testing(dataset, uid, mode=mode, cached=cached, groups=groups, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type, method=method)
         if result is not None:
             output.extend(result)
     if clear_data:
@@ -381,7 +384,7 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
         time_name = 'timeinfo'
     else:
         time_name = 'notime'
-    filename = REPORT_NAME.format(cd.soft_report, agg_name, mode, time_window, pca_name, time_name, date.today())
+    filename = REPORT_NAME.format(cd.soft_report, agg_name, mode, method, time_window, pca_name, time_name, date.today())
     remove_file_if_exists(filename)
     write_to_file_buffered(filename, output)
     output = None
@@ -800,11 +803,11 @@ if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     Time_Info = [
-        False
+        True, False
         # True, False
     ]
     PCA = [
-        False
+        False, True
         # False, True
     ]
     MODE = [
@@ -834,6 +837,11 @@ if __name__ == '__main__':
     TIME_WINDOWS = [
         1000
     ]   ## 0, 1, 100, 200, 250, 500, 750, 1000, 1250, 1500, 1750, 2000
+    ## 100, 250, 500, 1000
+
+    PREPROCESSING = [
+        'original', 'over', 'under'
+    ]   ## 'original', 'over', 'under', 'combo'
 
     ### Init sorting mechanism
     sorting = init_sorting_schemes()
@@ -872,15 +880,17 @@ if __name__ == '__main__':
 
                     for pca in PCA:
                         debug('pca is : {}'.format(pca))
-                        ## Generate testing report using machine learning evaluation
-                        # generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time, pca=pca, time_info=time_info, app_type=app_type)
-                        # debug(psutil.virtual_memory(), out_file=True)
+
+                        for pre in PREPROCESSING:
+                            # Generate testing report using machine learning evaluation
+                            generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time, pca=pca, time_info=time_info, app_type=app_type, method=pre)
+                            debug(psutil.virtual_memory(), out_file=True)
 
                 ### Top-k apps evaluation
                 # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, app_type=app_type)
 
                 ### Apps X Time evaluation
-                extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=app_cat, cached=True, time_window=time, time_info=time_info, app_type=app_type, k_fold=K_FOLD)
+                # extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=app_cat, cached=True, time_window=time, time_info=time_info, app_type=app_type, k_fold=K_FOLD)
 
                 ### Clean memory
                 debug('Clearing memory', out_file=True)

@@ -10,6 +10,10 @@ Version 1.0.6
 from general import *
 from view_soft import extract_app_statistics, select_top_k_apps
 
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTEENN
+
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from sklearn.metrics import roc_curve, auc
 
@@ -35,7 +39,7 @@ import psutil
 
 gc.enable()
 
-MODEL_FILENAME  = '{}_{}_{}_{}_{}_{}_{}_{}{}.bin'   # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo] [(None)/fore/back]
+MODEL_FILENAME  = '{}_{}_{}_{}_{}_{}_{}_{}{}{}.bin'   # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo] [(None)/fore/back] [(None)/over/under/combo]
 
 DUMP_XY         = False
 DUMPXY_FILENAME = '{}_{}_{}_{}_{}_{}_{}_{}.txt'     # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
@@ -94,12 +98,41 @@ def matrix_decomposition(X, y, sparse=False):
         # Thomas P. Minka: Automatic Choice of Dimensionality for PCA. NIPS 2000: 598-604
     return pca.fit_transform(X, y)
 
+def sampling(X, y, method='over'):
+    debug('Started sampling')
+
+    ### ovesampling
+    if method== 'over':
+        query_time = time.time()
+        pp = SMOTE(kind='regular')
+        X_pp, y_pp = pp.fit_sample(X, y)
+        process_time = int(time.time() - query_time)
+        debug('Finished sampling SMOTE in {} seconds'.format(process_time))
+
+    ### undersampling
+    elif method == 'under':
+        query_time = time.time()
+        pp = RandomUnderSampler()
+        X_pp, y_pp = pp.fit_sample(X, y)
+        process_time = int(time.time() - query_time)
+        debug('Finished sampling One-Sided Selection in {} seconds'.format(process_time))
+    
+    ### oversampling + undersampling
+    elif method =='combo':
+        query_time = time.time()
+        pp = SMOTEENN()
+        X_pp, y_pp = pp.fit_sample(X, y)
+        process_time = int(time.time() - query_time)
+        debug('Finished sampling SMOTE-ENN in {} seconds'.format(process_time))
+    
+    return X_pp, y_pp
+
 """
 X: training dataset (features)
 y: testing dataset  (label)
 clf: classifier
 """
-def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0, pca=False, time_info=False, app_type='all'):
+def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0, pca=False, time_info=False, app_type='all', method='original'):
     output = {}
     i = 0
     train_time = 0.0
@@ -110,6 +143,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
     str_pca = ''
     str_timeinfo = ''
     str_app_type = ''
+    str_pre = ''
 
     if pca:
         str_pca = 'PCA'
@@ -118,6 +152,8 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         str_timeinfo = 'TimeInfo'
     if app_type != 'all':
         str_app_type = app_type
+    if method != 'original':
+        str_pre = '_' + method
 
     # debug(X)
     # debug(y)
@@ -128,11 +164,15 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
     for (train, test) in cv:
         # debug((X[train]))
         # debug((X[test]))
+        if method != 'original':
+            Xt, yt = sampling(X[train], y[train], method=method)
+        else:
+            Xt, yt = X[train], y[train]
         uid = info.get('uid')
         clf_name = info.get('clf_name')
         filename = None
         if uid is not None and clf_name is not None:
-            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo, str_app_type)
+            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo, str_app_type, str_pre)
 
         success = True
         load = False
@@ -148,7 +188,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
                 success = False
         try:
             if not cached or not success:
-                fit = clf.fit(X[train], y[train])
+                fit = clf.fit(Xt, yt)
         except Exception as ex:
             debug(ex, get_function_name())
         train_time += (time.time() - query_time)
