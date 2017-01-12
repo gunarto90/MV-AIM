@@ -86,7 +86,9 @@ def get_cv(k_fold, groups, X, y):
     return cv, n_split
 
 def matrix_decomposition(X, y, sparse=False):
-    n_components = 20
+    ncol = X.shape[1]
+    n_components = ncol
+    # n_components = 20
     svd_solver = 'full'
     # svd_solver = 'randomized'     # A randomized algorithm for the decomposition of matrices
     if sparse:
