@@ -38,10 +38,10 @@ CATEGORY_NAME           = 'category_lookup.csv'
 APP_CATEGORY            = 'app_category.csv'
 STOP_FILENAME           = 'stop_app.txt'
 # APP_NAME_LIST           = 'app_{}.csv'
-APP_NAME_LIST           = 'app_{}_{}.csv' ## [full/cat/part/hybrid] [fore/back/all]
+APP_NAME_LIST           = 'app_{}_{}.csv' ## [full/cat/part/hybrid] [store/pick/all]
 
 ### Intermediate binary file
-USERS_DATA_NAME         = 'users_data_{}_{}_{}{}{}.bin'                         ## [Mode] [UID] [Time Window] [(None)/_Time] [None/_(fore/back)]
+USERS_DATA_NAME         = 'users_data_{}_{}_{}{}{}.bin'                         ## [Mode] [UID] [Time Window] [(None)/_Time] [None/_(store/pick)]
 APP_STATS_NAME          = 'acts_stats_{}_{}_SORT[{}]_WEIGHT[{}]_{}_{}.bin'      ## [Mode] [UID] [Sorting Mode] [Weighting Mode] [Counter] [Length]
 
 ### Software dataset and intermediate
@@ -57,7 +57,7 @@ REPORT_DOW_NAME         = '{}/soft_report_dow_{}_{}.csv'                        
 REPORT_TOW_NAME         = '{}/soft_report_tow_{}_{}.csv'                        ## [Directory] [Mode] [UID]
 
 ### Time data
-TIME_CACHE              = 'time_data_{}_{}_{}_{}_{}{}.bin'                      ## [tod/dow/tow/atod/adow/atow] [UID] [mode] [iteration] [n_split][evaluation('','frequency','entropy')]
+TIME_CACHE              = 'time_data_{}_{}_{}_{}_{}{}.bin'                      ## [tod/dow/tow/atod/adow/atow] [UID] [mode] [iteration] [n_split] [evaluation('','frequency','entropy')]
 
 APP_F_THRESHOLD         = 1000  ## Minimum occurrence of the app throughout the dataset
 
@@ -170,7 +170,7 @@ def transform_dataset(user_ids, app_names, mode, write=False, categories=None, a
                         cat = app_cat.get(app.strip())
                         if cat is not None:
                             try:
-                                if app_type == 'fore':
+                                if app_type == 'store':
                                     cat -= 1
                                 app_dist[cat] = True
                             except Exception as ex:
@@ -396,8 +396,9 @@ def init_time_matrix(slots):
         matrix[i] = np.zeros((len(var.activities),))
     return matrix
 
-def build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, evaluation='none'):
-    nameset = ['tod', 'dow', 'tow', 'atod', 'adow', 'atow']
+def build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, evaluation=''):
+    # nameset = ['tod', 'dow', 'tow', 'atod', 'adow', 'atow']
+    nameset = ['atod', 'adow', 'atow']
     filenames = {}
     time_app_data = {}
 
@@ -420,9 +421,9 @@ def build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, eva
         if not success:
             return build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, evaluation=evaluation)
     else:
-        time_app_data['tod'] = init_time_matrix(24)
-        time_app_data['dow'] = init_time_matrix(7)        
-        time_app_data['tow'] = init_time_matrix(7*24)
+        # time_app_data['tod'] = init_time_matrix(24)
+        # time_app_data['dow'] = init_time_matrix(7)        
+        # time_app_data['tow'] = init_time_matrix(7*24)
 
         time_app_data['atod'] = {}
         time_app_data['adow'] = {}
@@ -446,9 +447,9 @@ def build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, eva
                 hour = user_data[4]
                 timeweek = user_data[5]
             ## Build the activity distribution among all timeslots
-            time_app_data['tod'][hour][act_int] += 1
-            time_app_data['dow'][day][act_int] += 1
-            time_app_data['tow'][timeweek][act_int] += 1
+            # time_app_data['tod'][hour][act_int] += 1
+            # time_app_data['dow'][day][act_int] += 1
+            # time_app_data['tow'][timeweek][act_int] += 1
             for j in range(1, len(X[i])):   # X.shape[1] = len(X[i])
                 if X[i][j] == 1:
                     time_app_data['atod'][j-1][hour][act_int] += 1
@@ -486,7 +487,7 @@ def build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, eva
                                 arr[j] = arr[j]/total
 
         ## Normalize the score frequency
-        if evaluation == 'frequency':
+        if evaluation == 'frequency' or evaluation == 'ef':
             for name in nameset:
                 if name in ['tod', 'dow', 'tow']:
                     try:
@@ -494,7 +495,7 @@ def build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, eva
                             score_frequency[name][i] = value/sum(score_frequency[name].values())
                     except: ## Division by 0 -- no data
                         # debug(score_frequency[name].values())
-                        debug('Exception division by zero (score frequency): {}'.format(name))
+                        # debug('Exception division by zero (score frequency): {}'.format(name))
                         pass
                 elif name in ['atod', 'adow', 'atow']:
                     for x in range(len(columns)):
@@ -503,7 +504,7 @@ def build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, eva
                                 score_frequency[name][x][i] = value/sum(score_frequency[name][x].values())
                         except: ## Division by 0 -- no data
                             # debug(score_frequency[name][x].values())
-                            debug('Exception division by zero (score frequency): {} [column:{}]'.format(name, x))
+                            # debug('Exception division by zero (score frequency): {} [column:{}]'.format(name, x))
                             pass
 
         # debug('Score frequency')
@@ -531,13 +532,26 @@ def build_time_matrix(uid, mode, X, y, columns, n_iter, total, cached=False, eva
                     for i, arr in data.items():
                         if sum(arr) > 0:
                             for j in range(len(arr)):
-                                arr[j] = arr[j]*score_frequency[name][i]
+                                arr[j] = arr[j]*(1-score_entropy[name][i])
                 elif name in ['atod', 'adow', 'atow']:
                     for x in range(len(columns)):
                         for i, arr in data[x].items():
                             if sum(arr) > 0:
                                 for j in range(len(arr)):
-                                    arr[j] = arr[j]*score_frequency[name][x][i]
+                                    arr[j] = arr[j]*(1-score_entropy[name][x][i])
+        elif evaluation == 'ef':
+            for name, data in time_app_data.items():
+                if name in ['tod', 'dow', 'tow']:
+                    for i, arr in data.items():
+                        if sum(arr) > 0:
+                            for j in range(len(arr)):
+                                arr[j] = arr[j]*score_frequency[name][i]*(1-score_entropy[name][i])
+                elif name in ['atod', 'adow', 'atow']:
+                    for x in range(len(columns)):
+                        for i, arr in data[x].items():
+                            if sum(arr) > 0:
+                                for j in range(len(arr)):
+                                    arr[j] = arr[j]*score_frequency[name][x][i]*(1-score_entropy[name][x][i])
 
         ## Dump into file
         for name in nameset:
@@ -563,6 +577,8 @@ def testing_time_app(X, y, time_app_data):
     for name in time_app_data:
         scores[name] = 0.0
     iterator = 0
+    ## Confusion matrix
+    conf = np.zeros((len(var.activities), len(var.activities)))
     for x in X:
         ## Extract time info
         date = datetime.fromtimestamp(x[0] / 1e3)
@@ -572,29 +588,29 @@ def testing_time_app(X, y, time_app_data):
         # debug(scores['dow'])
         # debug(time_app_data['dow'][day])
         ## Extract score for each method
-        tod = time_app_data['tod'][hour]
-        dow = time_app_data['dow'][day]
-        tow = time_app_data['tow'][timeweek]
+        # tod = time_app_data['tod'][hour]
+        # dow = time_app_data['dow'][day]
+        # tow = time_app_data['tow'][timeweek]
 
         # debug(tod)
         # debug(dow)
         # debug(tow)
 
-        answer_tod = get_answer(tod)
-        answer_dow = get_answer(dow)
-        answer_tow = get_answer(tow)
+        # answer_tod = get_answer(tod)
+        # answer_dow = get_answer(dow)
+        # answer_tow = get_answer(tow)
 
         # debug(answer_tod)
         # debug(answer_dow)
         # debug(answer_tow)
         # debug(y[iterator])
 
-        if answer_tod == y[iterator]:
-            scores['tod'] += 1
-        if answer_dow == y[iterator]:
-            scores['dow'] += 1
-        if answer_tow == y[iterator]:
-            scores['tow'] += 1
+        # if answer_tod == y[iterator]:
+        #     scores['tod'] += 1
+        # if answer_dow == y[iterator]:
+        #     scores['dow'] += 1
+        # if answer_tow == y[iterator]:
+        #     scores['tow'] += 1
 
         atod = np.zeros((len(var.activities),))
         adow = np.zeros((len(var.activities),))
@@ -618,6 +634,9 @@ def testing_time_app(X, y, time_app_data):
         answer_adow = get_answer(adow)
         answer_atow = get_answer(atow)
 
+        ## Confusion matrix
+        conf[y[iterator]][answer_atod] += 1
+
         if answer_atod == y[iterator]:
             scores['atod'] += 1
         if answer_adow == y[iterator]:
@@ -632,10 +651,11 @@ def testing_time_app(X, y, time_app_data):
         scores[name] /= len(y)
 
     # debug(scores)
+    # debug(conf, clean=True)
 
-    return scores
+    return scores, conf
 
-def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=None, cached=False, time_window=DEFAULT_TIME_WINDOW, time_info=False, app_type='all', evaluation='none', k_fold=K_FOLD):
+def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=None, cached=False, time_window=DEFAULT_TIME_WINDOW, time_info=False, app_type='all', evaluation='', k_fold=K_FOLD):
     nameset = ['tod', 'dow', 'tow', 'atod', 'adow', 'atow']
     ctr_uid = 0
     dataset = {}
@@ -668,6 +688,7 @@ def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=Tru
             if uid not in user_ids:
                 continue
             dataset[uid] = data
+    conf = np.zeros((len(var.activities), len(var.activities)))
     for uid, raw in dataset.items():
         if agg:
             username = 'all'
@@ -695,7 +716,8 @@ def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=Tru
             # debug(time_app_data, clean=True)
             train_time += (time.time() - qtime)
             qtime = time.time()
-            scores = testing_time_app(X[test], y[test], time_app_data)
+            scores, conf_matrix = testing_time_app(X[test], y[test], time_app_data)
+            conf = np.add(conf, conf_matrix)
             test_time += (time.time() - qtime)
             for name, score in scores.items():
                 found = agg_scores.get(name)
@@ -709,6 +731,7 @@ def extract_time_info(users_data, user_ids, mode, app_names, categories, agg=Tru
             text = '{},{},{},{},{},{},{},{},{}'.format(mode, time_info, app_type, time_window, train_time, test_time, name, evaluation, score)
             texts.append(text)
         write_to_file_buffered(cd.soft_report + report_filename, texts)
+    debug(conf, clean=True)
 
 def extract_app_statistics(X, y, mode, uid, sort_mode, weight_mode, app_names=None, categories=None, cached=True, counter=0, length=0):
     acts_app = []   ### For every activities it would have a dictionary
@@ -873,24 +896,25 @@ if __name__ == '__main__':
     debug('--- Program Started ---', out_file=True)
     Time_Info = [
         # False
-        True, False
+        False
     ]
     PCA = [
         # False
-        False, True
+        False
     ]
     MODE = [
-        'Full', 'Cat'
+        # 'Full'
         # 'Cat'
+        'Full', 'Cat'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
     ## 'Full', 'Cat'
 
     APP_TYPE = [
-        # 'fore'
+        # 'store'
         # 'all'
-        'fore', 'all'
-    ]   ## 'fore', 'back', 'all'
-     ## 'fore', 'all'
+        'all'
+    ]   ## 'store', 'pick', 'all'
+     ## 'store', 'all'
 
     TOP_K = [
         # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
@@ -907,7 +931,7 @@ if __name__ == '__main__':
     ]   ## 'g', 'w', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
-        1000
+        100, 250, 500, 1000
     ]   ## 0, 1, 100, 200, 250, 500, 750, 1000, 1250, 1500, 1750, 2000
     ## 100, 250, 500, 1000
 
@@ -916,8 +940,9 @@ if __name__ == '__main__':
     ]   ## 'original', 'over', 'under', 'combo'
 
     EVALUTION_FUNCTION = [
-        '', 'frequency', 'entropy'
-    ]   ## '', 'frequency', 'entropy'
+        # '', 'entropy'
+        '', 'frequency', 'entropy',  'ef'
+    ]   ## '', 'frequency', 'entropy',  'ef'
 
     ### Init sorting mechanism
     sorting = init_sorting_schemes()
@@ -962,13 +987,21 @@ if __name__ == '__main__':
                     #         generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time, pca=pca, time_info=time_info, app_type=app_type, method=pre)
                     #         debug(psutil.virtual_memory(), out_file=True)
 
-                ### Top-k apps evaluation
-                # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, app_type=app_type)
+                ## Top-k apps evaluation
+                evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, app_type=app_type)
 
                 ### Apps X Time evaluation
-                for evaluation in EVALUTION_FUNCTION:
-                    debug('Evaluation function: {}'.format(evaluation))
-                    extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=app_cat, cached=True, time_window=time, time_info=time_info, app_type=app_type, evaluation=evaluation, k_fold=K_FOLD)
+                # for evaluation in EVALUTION_FUNCTION:
+                #     debug('Evaluation function: {}'.format(evaluation))
+                #     extract_time_info(users_data, user_ids, mode, app_names, categories, agg=True, app_cat=app_cat, cached=True, time_window=time, time_info=time_info, app_type=app_type, evaluation=evaluation, k_fold=K_FOLD)
+
+                ### Only temporal information using ML algorithms
+                pass
+
+                ### Random guess
+                pass
+
+                ### Using majority class
 
                 ### Clean memory
                 debug('Clearing memory', out_file=True)

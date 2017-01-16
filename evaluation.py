@@ -39,7 +39,7 @@ import psutil
 
 gc.enable()
 
-MODEL_FILENAME  = '{}_{}_{}_{}_{}_{}_{}_{}{}{}.bin'   # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo] [(None)/fore/back] [(None)/over/under/combo]
+MODEL_FILENAME  = '{}_{}_{}_{}_{}_{}_{}_{}{}{}.bin'   # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo] [(None)/store/pick] [(None)/over/under/combo]
 
 DUMP_XY         = False
 DUMPXY_FILENAME = '{}_{}_{}_{}_{}_{}_{}_{}.txt'     # [uid] [clf_name] [#iter] [#total] [mode] [TIME_WINDOW] [PCA] [TimeInfo]
