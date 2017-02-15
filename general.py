@@ -95,7 +95,7 @@ def debug(message, callerid=None, clean=False, out_stdio=True, out_file=False):
 def activity_to_int(act, activities):
     idx = 0
     for a in activities:
-        if a == act:
+        if a.lower() == act.lower():
             return idx
         idx += 1
     # debug(act, get_function_name())
