@@ -1,13 +1,14 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.6
-2017/01/05 04:00PM
+Version 1.0.9
+2017/02/16 02:25PM
 """
 import os
 import math
 import json
 import inspect
+import pandas
 from datetime import datetime
 from datetime import date
 from math import radians, cos, sin, asin, sqrt, pow, exp
@@ -131,6 +132,14 @@ def haversine(lat1, lon1, lat2, lon2):
     distance = km * 1000
     return distance # in meter
 
+def read_csv(filename):
+    if (is_file_exists(filename)):
+        df = pandas.read_csv(filename, sep=',')
+        data = df.values
+        return data
+    else:
+        return []
+
 def init(file='users.json'):
     ### Init user ids
     user_ids = None
@@ -152,10 +161,15 @@ def init(file='users.json'):
     make_sure_path_exists(cd.temporal_folder)
 
     make_sure_path_exists(cd.soft_report)
+    make_sure_path_exists(cd.temp_report)
+
     make_sure_path_exists(cd.soft_cv_model_folder)
     make_sure_path_exists(cd.soft_statistics_folder)
     make_sure_path_exists(cd.soft_classifier)
+
     make_sure_path_exists(cd.soft_users_cache)
     make_sure_path_exists(cd.soft_users_time_cache)
+    make_sure_path_exists(cd.temp_cache)
+
     ### Return user ids
     return user_ids

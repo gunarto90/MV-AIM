@@ -2,7 +2,7 @@
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
 Version 1.0.4
-2017/01/05 04:00PM
+2017/02/16 02:54PM
 """
 
 """
@@ -35,4 +35,7 @@ soft_classifier         = model_folder + SOFTWARE + CLASSIFIER
 soft_users_cache        = model_folder + SOFTWARE + CACHE
 soft_users_time_cache   = model_folder + SOFTWARE + CACHE + TEMPORAL
 
+temp_cache              = model_folder + TEMPORAL + CACHE
+
 soft_report             = report_folder + SOFTWARE
+temp_report             = report_folder + TEMPORAL
