@@ -15,6 +15,8 @@ from math import radians, cos, sin, asin, sqrt, pow, exp
 
 import config_directory as cd
 import config_variable as var
+import seaborn as sns; sns.set()
+from matplotlib import pyplot as plt
 
 IS_DEBUG = True
 
@@ -173,3 +175,10 @@ def init(file='users.json'):
 
     ### Return user ids
     return user_ids
+
+def plot_heatmap(data, xlabel=None, ylabel='Activities', xtick=True, ytick=var.activities_short):
+    # http://seaborn.pydata.org/generated/seaborn.heatmap.html
+    ax = sns.heatmap(data, yticklabels=ytick, xticklabels=xtick)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    plt.show()

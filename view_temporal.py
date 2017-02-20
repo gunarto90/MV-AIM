@@ -13,8 +13,6 @@ import time
 import pickle
 
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
-from matplotlib import pyplot as plt
-import seaborn as sns; sns.set()
 
 SOFT_FORMAT = '{}/{}_soft.csv'
 TEMP_FORMAT = '{}/{}_temp.csv'
@@ -156,43 +154,65 @@ def testing_temporal(user_ids, uid='ALL', method='original', cached=True):
         texts.append('{},{},{},{}'.format(clf_name,mean_acc,train_time,test_time))
     write_to_file_buffered('{}/report_{}.csv'.format(cd.temp_report, uid), texts)
 
-def plot_heatmap(data, xlabel=None, xtick=True):
-    # http://seaborn.pydata.org/generated/seaborn.heatmap.html
-    ax = sns.heatmap(data, yticklabels=var.activities_short, xticklabels=xtick)
-    ax.set_ylabel('Activities')
-    ax.set_xlabel(xlabel)
-    plt.show()
-
-def heatmap(user_ids, uid='ALL'):
+def heatmap_temporal(user_ids, uid='ALL'):
     dataset = []
     ctr_uid = 0
     filename = cd.temporal_folder + '/{}_temp.csv'.format(uid)
     debug('Read from {}'.format(filename))
     dataset = read_csv(filename)
     ### Time vs Activity
+    act_dow_dist = []
+    act_tod_dist = []
+    act_tow_dist = []
+    ### Activity
+    act_dist = []
+    act_dist.append([])
+    ### Time
     dow_dist = []
+    dow_dist.append([])
     tod_dist = []
-    tow_dist = []    
+    tod_dist.append([])
+    tow_dist = []
+    tow_dist.append([])
     for i in range(len(var.activities)):
-        dow_dist.append([])
-        tod_dist.append([])
-        tow_dist.append([])        
+        act_dist[0].append(0)
+        act_dow_dist.append([])
+        act_tod_dist.append([])
+        act_tow_dist.append([])
         for x in range(DAILY):
-            dow_dist[i].append(0)
+            act_dow_dist[i].append(0)
         for x in range(HOURLY):
-            tod_dist[i].append(0)
+            act_tod_dist[i].append(0)
         for x in range(WEEKLY):
-            tow_dist[i].append(0)
+            act_tow_dist[i].append(0)
+    for i in range(DAILY):
+        dow_dist[0].append(0)
+    for i in range(HOURLY):
+        tod_dist[0].append(0)
+    for i in range(WEEKLY):
+        tow_dist[0].append(0)
     for data in dataset:
         act = int(data[3])
-        dow_dist[act][int(data[0])] += 1
-        tod_dist[act][int(data[1])] += 1
-        tow_dist[act][int(data[2])] += 1
-    debug(dow_dist)
+        ## Activity distribution
+        act_dist[0][act] += 1
+        ## Time distribution
+        dow_dist[0][int(data[0])] += 1
+        tod_dist[0][int(data[1])] += 1
+        tow_dist[0][int(data[2])] += 1
+        ## Activity X Time distribution
+        act_dow_dist[act][int(data[0])] += 1
+        act_tod_dist[act][int(data[1])] += 1
+        act_tow_dist[act][int(data[2])] += 1
+        
+    debug(act_dow_dist)
     ### Plots
-    plot_heatmap(dow_dist, 'Day of Week', var.DAY_OF_WEEK)
-    plot_heatmap(tod_dist, 'Time of Day')
-    plot_heatmap(tow_dist, 'Time of Week', False)
+    # plot_heatmap(act_dow_dist, xlabel='Day of Week', xtick=var.DAY_OF_WEEK)
+    # plot_heatmap(act_tod_dist, xlabel='Time of Day')
+    # plot_heatmap(act_tow_dist, xlabel='Time of Week', xtick=False)
+    plot_heatmap(act_dist, ylabel='', ytick=False, xlabel='Activities', xtick=var.activities_short)
+    plot_heatmap(dow_dist, ylabel='', ytick=False, xlabel='Day of Week', xtick=var.DAY_OF_WEEK)
+    plot_heatmap(tod_dist, ylabel='', ytick=False, xlabel='Time of Day')
+    plot_heatmap(tow_dist, ylabel='', ytick=False, xlabel='Time of Week', xtick=False)
 
 # Main function
 if __name__ == '__main__':
@@ -202,12 +222,12 @@ if __name__ == '__main__':
     # for uid in user_ids:
     #     debug(uid)
     #     activity_hour = read_activity_time(uid, cached=True, timeslots=DAILY)
-    testing_temporal(user_ids, uid='ALL')
-    # heatmap(user_ids, uid='ALL')
+    # testing_temporal(user_ids, uid='ALL')
+    heatmap_temporal(user_ids, uid='356063057559765')
 
 """
 1. Make a heatmap
-a. Time vs Activities (DoW/ToD/ToW)
+a. Time vs Activities (DoW/ToD/ToW) v
 b. Apps vs Time (Full/Cat/Hybrid) vs (DoW/ToD/ToW)
 c. Apps vs Activities (Full/Cat/Hybrid)
 """
