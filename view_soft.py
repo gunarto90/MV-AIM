@@ -890,28 +890,57 @@ def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFA
     filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, time_window, time_name, date.today())
     write_to_file_buffered(filename, texts)
 
+def heatmap_software(users_data, user_ids):
+    dataset = []
+    agg_type = 'agg'
+    for uid, data in users_data.items():
+        if uid not in user_ids:
+            continue
+        dataset.extend(data)
+    dataset = np.array(dataset)
+    # debug(dataset.shape)
+    ncol = dataset.shape[1]
+    base_col = 3
+    X = dataset[:,base_col:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
+    y = dataset[:,2]
+    soft_dist = []
+    for i in range(len(var.activities)):
+        soft_dist.append([])
+        soft_dist[i] = np.zeros_like(X[0])
+    for i in range(len(X)):
+        # debug(X[i])
+        # debug(y[i])
+        for j in range(len(X[i])):
+            if X[i][j] > 0:
+                soft_dist[y[i]][j] += 1
+    soft_dist = np.array(soft_dist)
+    debug(soft_dist.T)
+
+    plot_heatmap(soft_dist, xlabel='App Categories', xtick=False)
+
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     Time_Info = [
-        # False
         False
+        # False, True
     ]
     PCA = [
-        # False
         False
+        # False, True
     ]
     MODE = [
         # 'Full'
-        # 'Cat'
-        'Full', 'Cat'
+        'Cat'
+        # 'Full', 'Cat'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
     ## 'Full', 'Cat'
 
     APP_TYPE = [
         # 'store'
         # 'all'
+        # 'all', 'store'
         'all'
     ]   ## 'store', 'pick', 'all'
      ## 'store', 'all'
@@ -919,19 +948,23 @@ if __name__ == '__main__':
     TOP_K = [
         # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
         # 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100
-        10, 20, 30, 40, 50, 60
+        # 10, 20, 30, 40, 50, 60
+        10
     ]   ## 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100
 
     SORTS = [
-        'f', 'ef'
+        # 'f', 'ef'
+        'ef'
     ]   ## 'f', 'ef', 'erf'
 
     WEIGHTS = [
-        'g', 'w', 'we', 'wef'
+        # 'g', 'w', 'we', 'wef'
+        'we'
     ]   ## 'g', 'w', 'we', 'wef', 'werf'
 
     TIME_WINDOWS = [
-        100, 250, 500, 1000
+        # 100, 250, 500, 1000
+        500
     ]   ## 0, 1, 100, 200, 250, 500, 750, 1000, 1250, 1500, 1750, 2000
     ## 100, 250, 500, 1000
 
@@ -941,7 +974,8 @@ if __name__ == '__main__':
 
     EVALUTION_FUNCTION = [
         # '', 'entropy'
-        '', 'frequency', 'entropy',  'ef'
+        # '', 'frequency', 'entropy',  'ef'
+        ''
     ]   ## '', 'frequency', 'entropy',  'ef'
 
     ### Init sorting mechanism
@@ -979,6 +1013,9 @@ if __name__ == '__main__':
                     debug('Finished transforming all data: {} users'.format(len(users_data)), out_file=True)
                     debug(psutil.virtual_memory(), out_file=True);
 
+                    ### Heatmap for software usage
+                    heatmap_software(users_data, user_ids)
+
                     # for pca in PCA:
                     #     debug('pca is : {}'.format(pca))
 
@@ -988,7 +1025,7 @@ if __name__ == '__main__':
                     #         debug(psutil.virtual_memory(), out_file=True)
 
                 ## Top-k apps evaluation
-                evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, app_type=app_type)
+                # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=True, single=False, time_window=time, app_type=app_type)
 
                 ### Apps X Time evaluation
                 # for evaluation in EVALUTION_FUNCTION:
