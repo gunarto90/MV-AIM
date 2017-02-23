@@ -916,11 +916,24 @@ def heatmap_software(users_data, user_ids, mode):
     soft_dist = np.array(soft_dist)
     debug(soft_dist.T)
 
+    entropies = []
+    frequencies = np.zeros_like(X[0])
+    i = 0
+    for arr in soft_dist.T:
+        ent = entropy(arr, basis=len(var.activities))
+        entropies.append(ent)
+        frequencies[i] = sum(arr)
+        i += 1
+    debug(entropies)
+    debug(len(entropies))
+    debug(frequencies)
+    debug(len(frequencies))
+
     if mode == 'full':
         label = 'App Namees'
     elif mode == 'cat':
         label = 'App Categories'
-    plot_heatmap(soft_dist, xlabel=label, xtick=False)
+    # plot_heatmap(soft_dist, xlabel=label, xtick=False)
 
 # Main function
 if __name__ == '__main__':
