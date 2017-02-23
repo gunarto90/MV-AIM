@@ -890,7 +890,7 @@ def evaluate_topk_apps(users_data, user_ids, mode, topk, sorting, sort_mode=DEFA
     filename = cd.soft_report + REPORT_TOPK_NAME.format(agg_type, mode, time_window, time_name, date.today())
     write_to_file_buffered(filename, texts)
 
-def heatmap_software(users_data, user_ids):
+def heatmap_software(users_data, user_ids, mode):
     dataset = []
     agg_type = 'agg'
     for uid, data in users_data.items():
@@ -916,7 +916,11 @@ def heatmap_software(users_data, user_ids):
     soft_dist = np.array(soft_dist)
     debug(soft_dist.T)
 
-    plot_heatmap(soft_dist, xlabel='App Categories', xtick=False)
+    if mode == 'full':
+        label = 'App Namees'
+    elif mode == 'cat':
+        label = 'App Categories'
+    plot_heatmap(soft_dist, xlabel=label, xtick=False)
 
 # Main function
 if __name__ == '__main__':
@@ -1014,7 +1018,7 @@ if __name__ == '__main__':
                     debug(psutil.virtual_memory(), out_file=True);
 
                     ### Heatmap for software usage
-                    heatmap_software(users_data, user_ids)
+                    heatmap_software(users_data, user_ids, mode.lower())
 
                     # for pca in PCA:
                     #     debug('pca is : {}'.format(pca))
