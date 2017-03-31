@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.1.0
-2017/01/05 07:09PM
+Version 1.1.2
+2017/03/31 11:36AM
 """
 import getopt
 import sys
@@ -297,7 +297,7 @@ def get_all_apps(user_ids, stop_words, mode, app_type, write=False, cached=False
     return app_names.keys()
 
 ### label is put in the first column
-def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TIME_WINDOW, pca=False, time_info=False, app_type='all', method='original'):
+def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TIME_WINDOW, dim='normal', time_info=False, app_type='all', method='original'):
     debug('Processing: {}'.format(uid))
     dataset = np.array(dataset)
     clfs = classifier_list()
@@ -316,11 +316,11 @@ def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TI
         for name, clf in clfs.items():
             debug(name)
             info['clf_name'] = name
-            output = evaluation(X, y, clf, k_fold=K_FOLD, info=info, cached=cached, mode=mode, groups=groups, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type, method=method)
+            output = evaluation(X, y, clf, k_fold=K_FOLD, info=info, cached=cached, mode=mode, groups=groups, time_window=time_window, dim=dim, time_info=time_info, app_type=app_type, method=method)
             acc = output['acc']
             time_train = output['time_train']
             time_test = output['time_test']
-            text = '{},{},{},{},{},{},{},{},{},{},{}'.format(uid, name, acc, time_train, time_test, mode, time_window, pca, time_info, app_type, method)
+            text = '{},{},{},{},{},{},{},{},{},{},{}'.format(uid, name, acc, time_train, time_test, mode, time_window, dim, time_info, app_type, method)
             texts.append(text)
         # Clear memory
         X = None
@@ -332,7 +332,7 @@ def testing(dataset, uid, mode, cached=True, groups=None, time_window=DEFAULT_TI
         return None
 
 ### Generating testing report per user
-def generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=None, cached=True, agg=False, time_window=DEFAULT_TIME_WINDOW, pca=False, time_info=False, app_type='all', method='original'):
+def generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=None, cached=True, agg=False, time_window=DEFAULT_TIME_WINDOW, dim='normal', time_info=False, app_type='all', method='original'):
     # ### Test
     if not agg:
         debug('Evaluating application data (single)', out_file=True)
@@ -355,7 +355,7 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
         if uid not in user_ids:
             continue
         if not agg:
-            result = testing(data, uid, mode=mode, cached=cached, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type, method=method)
+            result = testing(data, uid, mode=mode, cached=cached, time_window=time_window, dim=dim, time_info=time_info, app_type=app_type, method=method)
             if result is not None:
                 output.extend(result)
         else:
@@ -364,7 +364,7 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
                 groups.append(ctr_uid)
     if agg:
         uid = 'ALL'
-        result = testing(dataset, uid, mode=mode, cached=cached, groups=groups, time_window=time_window, pca=pca, time_info=time_info, app_type=app_type, method=method)
+        result = testing(dataset, uid, mode=mode, cached=cached, groups=groups, time_window=time_window, dim=dim, time_info=time_info, app_type=app_type, method=method)
         if result is not None:
             output.extend(result)
     if clear_data:
@@ -376,15 +376,11 @@ def generate_testing_report(users_data, user_ids, mode, clear_data=False, catego
         agg_name = 'agg'
     else:
         agg_name = 'single'
-    if pca:
-        pca_name = 'pca'
-    else:
-        pca_name = 'normal'
     if time_info:
         time_name = 'timeinfo'
     else:
         time_name = 'notime'
-    filename = REPORT_NAME.format(cd.soft_report, agg_name, mode, method, time_window, pca_name, time_name, date.today())
+    filename = REPORT_NAME.format(cd.soft_report, agg_name, mode, method, time_window, dim, time_name, date.today())
     remove_file_if_exists(filename)
     write_to_file_buffered(filename, output)
     output = None
@@ -935,21 +931,81 @@ def heatmap_software(users_data, user_ids, mode):
         label = 'App Categories'
     # plot_heatmap(soft_dist, xlabel=label, xtick=False)
 
+def clustering(users_data, user_ids, mode):
+    dataset = []
+    debug('Preparing dataset for clustering')
+    for uid, data in users_data.items():
+        if uid not in user_ids:
+            continue
+        dataset.extend(data)
+    dataset = np.array(dataset)
+    # debug(dataset.shape)
+    ncol = dataset.shape[1]
+    base_col = 3
+    X = dataset[:,base_col:ncol] # Remove index 0 (uid), index 1 (time), and index 2 (activities)
+    y = dataset[:,2]
+
+    labels, n_clusters = kmeans(X)
+
+    for i in range(len(labels)):
+        debug('{},{}'.format(labels[i], y[i]), clean=True)
+    debug('Finished clustering: {} clusters'.format(n_clusters))
+
+def kmeans(X):
+    from sklearn.cluster import KMeans
+    n_clusters = 20
+    debug('Running K-MEANS clustering')
+    random_state = np.random.RandomState(0)
+    # query_time = time.time()
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, max_iter=1000, n_jobs=2).fit(X)
+    labels = kmeans.labels_
+    # process_time = int(time.time() - query_time)
+    debug(kmeans.cluster_centers_, clean=True)
+    # debug('Finished clustering {0:,} in {1} seconds'.format(len(X), process_time))
+    return labels, n_clusters
+
+def hdcluster(X):
+    import hdbscan  # https://github.com/lmcinnes/hdbscan
+    debug("Running HDBSCAN clustering")
+    # query_time = time.time()
+    MIN_CLUSTER_SIZE = 10
+    MIN_SAMPLES = 3
+    db = hdbscan.HDBSCAN(min_cluster_size=MIN_CLUSTER_SIZE, min_samples=MIN_SAMPLES).fit(X)
+
+    labels = db.labels_
+    # labels = db.fit_predict(X)
+    # process_time = int(time.time() - query_time)
+    # debug('Finished clustering {0:,} in {1} seconds'.format(len(X), process_time))
+
+    count_outlier = 0
+    for x in labels:
+        if x == -1:
+            count_outlier += 1
+    debug('#Labels: {}'.format(len(labels)))
+    debug('#Outlier : {}'.format(count_outlier))
+
+    # Number of clusters in labels, ignoring noise if present.
+    n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+    debug('Number of clusters: {}'.format(n_clusters))
+
+    return labels, n_clusters
+
 # Main function
 if __name__ == '__main__':
     ### Initialize variables from json file
     debug('--- Program Started ---', out_file=True)
     Time_Info = [
-        False
+        False, True
         # False, True
     ]
-    PCA = [
-        False
-        # False, True
+    DIM = [
+        'normal', 'pca', 'lsi', 'pca_sq', 'lsi_sq'
+        # 'normal', 'pca', 'lsi'
     ]
     MODE = [
-        # 'Full'
-        'Cat'
+        'Full', 'Cat'
+        # 'Cat'
         # 'Full', 'Cat'
     ]   ## 'Full', 'Part', 'Cat', 'Hybrid'
     ## 'Full', 'Cat'
@@ -1031,18 +1087,20 @@ if __name__ == '__main__':
                     debug(psutil.virtual_memory(), out_file=True);
 
                     ### Heatmap for software usage
-                    heatmap_software(users_data, user_ids, mode.lower())
+                    # heatmap_software(users_data, user_ids, mode.lower())
 
-                    # for pca in PCA:
-                    #     debug('pca is : {}'.format(pca))
+                    # clustering(users_data, user_ids, mode)
 
-                    #     for pre in PREPROCESSING:
-                    #         # Generate testing report using machine learning evaluation
-                    #         generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time, pca=pca, time_info=time_info, app_type=app_type, method=pre)
-                    #         debug(psutil.virtual_memory(), out_file=True)
+                    for dim in DIM:
+                        debug('Dimension reduction is : {}'.format(dim))
+
+                        for pre in PREPROCESSING:
+                            # Generate testing report using machine learning evaluation
+                            generate_testing_report(users_data, user_ids, mode, clear_data=False, categories=categories, cached=True, agg=True, time_window=time, dim=dim, time_info=time_info, app_type=app_type, method=pre)
+                            debug(psutil.virtual_memory(), out_file=True)
 
                 ## Top-k apps evaluation
-                # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=True, single=False, time_window=time, app_type=app_type)
+                # evaluate_topk_apps_various(users_data, user_ids, mode, TOP_K, sorting, SORTS, WEIGHTS, app_names=app_names, categories=categories, cached=False, single=False, time_window=time, app_type=app_type)
 
                 ### Apps X Time evaluation
                 # for evaluation in EVALUTION_FUNCTION:

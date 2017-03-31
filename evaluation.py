@@ -1,8 +1,8 @@
 """
 Code by Gunarto Sindoro Njoo
 Written in Python 3.5.2 (Anaconda 4.1.1) -- 64bit
-Version 1.0.6
-2016/12/08 04:30PM
+Version 1.0.7
+2017/03/31 11:36AM
 """
 """
 
@@ -24,7 +24,7 @@ from sklearn.ensemble import RandomForestClassifier, IsolationForest, ExtraTrees
 from sklearn.ensemble import GradientBoostingClassifier, AdaBoostClassifier, BaggingClassifier
 from sklearn.naive_bayes import GaussianNB, BernoulliNB, MultinomialNB
 from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier, export_graphviz
-from sklearn.decomposition import PCA, SparsePCA
+from sklearn.decomposition import PCA, SparsePCA, TruncatedSVD
 
 from scipy import interp
 from math import sqrt
@@ -48,7 +48,7 @@ def classifier_list():
     clfs = {}
     ### Forests
     clfs['rfg']     = RandomForestClassifier(n_jobs=4, criterion='gini')
-    clfs['rfe']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
+    # clfs['rfe']     = RandomForestClassifier(n_jobs=4, criterion='entropy')
     # clfs['etr']     = ExtraTreesClassifier()
     ### Boosting
     # clfs['gbc']     = GradientBoostingClassifier()
@@ -65,8 +65,8 @@ def classifier_list():
     # clfs['nbb']     = BernoulliNB()     # Good
     # clfs['nbm']     = MultinomialNB()   # Best    # Can't handle negatives
     # ### Decision Tree (CART)
-    clfs['dtg']     = DecisionTreeClassifier(criterion='gini')
-    clfs['dte']     = DecisionTreeClassifier(criterion='entropy')
+    # clfs['dtg']     = DecisionTreeClassifier(criterion='gini')
+    # clfs['dte']     = DecisionTreeClassifier(criterion='entropy')
     # clfs['etg']     = ExtraTreeClassifier(criterion='gini')
     # clfs['ete']     = ExtraTreeClassifier(criterion='entropy')
     return clfs
@@ -85,20 +85,28 @@ def get_cv(k_fold, groups, X, y):
         cv = logo.split(X, y, groups=groups)
     return cv, n_split
 
-def matrix_decomposition(X, y, sparse=False):
+def matrix_decomposition(X, y, dim='pca', sparse=False):
     ncol = X.shape[1]
-    n_components = ncol
+    if dim in ['pca', 'lsi']:
+        n_components = ncol - 1
+    elif dim in ['pca_sq', 'lsi_sq']:
+        n_components = int(sqrt(ncol))
     # n_components = 20
     svd_solver = 'full'
     # svd_solver = 'randomized'     # A randomized algorithm for the decomposition of matrices
-    if sparse:
-        pca = SparsePCA(n_components=n_components, svd_solver=svd_solver)
-    else:
-        # M. Tipping and C. Bishop, Probabilistic Principal Component Analysis, Journal of the Royal Statistical Society, Series B, 61, Part 3, pp. 611-622 (Default)
-        pca = PCA(n_components=n_components, svd_solver=svd_solver)
-        # pca = PCA(n_components='mle', svd_solver='full')
-        # Thomas P. Minka: Automatic Choice of Dimensionality for PCA. NIPS 2000: 598-604
-    return pca.fit_transform(X, y)
+    if dim in ['pca', 'pca_sq']:
+        if sparse:
+            dim = SparsePCA(n_components=n_components, svd_solver=svd_solver)
+        else:
+            # M. Tipping and C. Bishop, Probabilistic Principal Component Analysis, Journal of the Royal Statistical Society, Series B, 61, Part 3, pp. 611-622 (Default)
+            dim = PCA(n_components=n_components, svd_solver=svd_solver)
+            # pca = PCA(n_components='mle', svd_solver='full')
+            # Thomas P. Minka: Automatic Choice of Dimensionality for PCA. NIPS 2000: 598-604
+    elif dim in ['lsi', 'lsi_sq']:
+            # Latent semantic indexing
+            # Finding structure with randomness: Stochastic algorithms for constructing approximate matrix decompositions Halko, et al., 2009 (arXiv:909) http://arxiv.org/pdf/0909.4061
+            dim = TruncatedSVD(n_components=n_components)
+    return dim.fit_transform(X, y)
 
 def sampling(X, y, method='over'):
     debug('Started sampling')
@@ -134,7 +142,7 @@ X: training dataset (features)
 y: testing dataset  (label)
 clf: classifier
 """
-def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0, pca=False, time_info=False, app_type='all', method='original'):
+def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', groups=None, time_window=0, dim='normal', time_info=False, app_type='all', method='original'):
     output = {}
     i = 0
     train_time = 0.0
@@ -142,14 +150,14 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
     mean_acc = 0.0
     total_ytrue = sum(y)
 
-    str_pca = ''
     str_timeinfo = ''
     str_app_type = ''
     str_pre = ''
 
-    if pca:
-        str_pca = 'PCA'
-        X = matrix_decomposition(X, y, False)
+    debug('Evaluation cached: {}'.format(cached))
+
+    if dim in ['pca', 'lsi', 'pca_sq', 'lsi_sq']:
+        X = matrix_decomposition(X, y, dim, False)
     if time_info:
         str_timeinfo = 'TimeInfo'
     if app_type != 'all':
@@ -174,28 +182,26 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         clf_name = info.get('clf_name')
         filename = None
         if uid is not None and clf_name is not None:
-            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo, str_app_type, str_pre)
+            filename = MODEL_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, dim, str_timeinfo, str_app_type, str_pre)
 
-        success = True
         load = False
         query_time = time.time()
-        if cached:
+        if cached is True:
             try:
                 if filename is None:
                     raise Exception('Filename is None')
                 with open(cd.soft_classifier + filename, 'rb') as f:
                     fit = pickle.load(f)
                     load = True
+                    debug('Model loaded from {}'.format(filename))
             except:
-                success = False
+                pass
         try:
-            if not cached or not success:
+            if not cached or not load:
                 fit = clf.fit(Xt, yt)
         except Exception as ex:
             debug(ex, get_function_name())
         train_time += (time.time() - query_time)
-        if success:
-            debug('Model loaded from {}'.format(filename))
         # probas_ = fit.predict_proba(X[test])
         query_time = time.time()
         inference = fit.predict(X[test])
@@ -226,7 +232,7 @@ def evaluation(X, y, clf, k_fold=5, info={}, cached=False, mode='Default', group
         ### Dump dataset
         # if DUMP_XY:
         #     z = np.array([y])
-        #     filename = cd.soft_classifier + DUMPXY_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, str_pca, str_timeinfo)
+        #     filename = cd.soft_classifier + DUMPXY_FILENAME.format(uid, clf_name, i, n_split, mode, time_window, dim, str_timeinfo)
         #     stack = np.concatenate((X, z.T), axis=1)
         #     np.savetxt(filename, stack, delimiter=',')
         #     stack = None
